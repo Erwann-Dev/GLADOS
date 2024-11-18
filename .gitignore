@@ -1,0 +1,6 @@
+.stack-work/
+*~
+glados.cabal
+stack.yaml.lock
+glados
+test/coverage/
