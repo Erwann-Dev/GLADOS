@@ -1,24 +1,17 @@
-{-
--- EPITECH PROJECT, 2024
--- B3 - Paradigms Seminar
--- File description:
--- The file containing all the functions
--}
-
 module Parser (
-    Parser(..),
-    charP,
-    stringP,
-    spanP,
-    notNull,
-    stringLiteral,
-    ws,
-    sepBy,
-    parseFile
+  Parser (..),
+  charP,
+  stringP,
+  spanP,
+  notNull,
+  stringLiteral,
+  ws,
+  sepBy,
+  parseFile,
 ) where
 
-import Data.Char
 import Control.Applicative
+import Data.Char
 import Utils
 
 -- NOTE: no proper error reporting
@@ -43,15 +36,22 @@ instance Applicative Parser where
 instance Alternative Parser where
   empty = Parser $ \_ -> Nothing
   (Parser p1) <|> (Parser p2) =
-      Parser $ \input -> p1 input <|> p2 input
+    Parser $ \input -> p1 input <|> p2 input
+
+instance Monad Parser where
+  return = pure
+  (Parser p) >>= f =
+    Parser $ \input -> do
+      (input', x) <- p input
+      runParser (f x) input'
 
 charP :: Char -> Parser Char
 charP x = Parser f
-  where
-    f (y:ys)
-      | y == x = Just (ys, x)
-      | otherwise = Nothing
-    f [] = Nothing
+ where
+  f (y : ys)
+    | y == x = Just (ys, x)
+    | otherwise = Nothing
+  f [] = Nothing
 
 stringP :: String -> Parser String
 stringP = sequenceA . map charP
