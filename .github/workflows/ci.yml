@@ -44,7 +44,6 @@ jobs:
 
   push_to_mirror:
     runs-on: ubuntu-latest
-    needs: install_and_test
     if: github.event_name == 'push'
 
     steps:
