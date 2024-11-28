@@ -1,0 +1,10 @@
+services:
+  haskell-app:
+    build: .
+    container_name: haskell_app_container
+    volumes:
+      - .:/usr/src/app
+    command: make run
+    environment:
+      - STACK_ROOT=/root/.stack
+    working_dir: /usr/src/app

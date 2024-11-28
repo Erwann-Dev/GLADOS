@@ -15,6 +15,9 @@ all:
 	$(STACK) build
 	cp $(BIN_DIR)/bin/$(NAME) ./
 
+run:
+	./$(NAME)
+
 clean:
 	$(STACK) clean
 	rm -rf test/coverage/*

@@ -1,0 +1,43 @@
+name: Haskell CI
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up GHC with Stack
+      uses: haskell/actions/setup@v1
+      with:
+        stack-version: 'latest'
+
+    - name: Install dependencies
+      run: stack build --only-dependencies
+
+    - name: Build project
+      run: stack build
+
+    - name: Run tests
+      run: m
+
+    - name: Generate coverage report
+      run: stack hpc report --all --destdir test/coverage/
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v2
+      with:
+        name: coverage-report
+        path: test/coverage/
+
+    - name: Install HLint
+      run: stack install hlint
+
+    - name: Run HLint
+      run: hlint src/ app/ test/
