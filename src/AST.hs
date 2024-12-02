@@ -9,6 +9,10 @@ data Expr
   | Mul Expr Expr
   | Div Expr Expr
   | Eq Expr Expr
+  | Neq Expr Expr
+  | Gt Expr Expr
+  | Lt Expr Expr
+  | If Expr Expr Expr
   deriving (Show)
 
 data Value
