@@ -23,6 +23,7 @@ exprP :: Parser Expr
 exprP =
   builtinP
     <|> constP
+    <|> ifP
     <|> parseList
 
 constP :: Parser Expr
@@ -46,4 +47,13 @@ builtinP' =
     <|> (Mul <$ charP '*')
     <|> (Div <$ stringP "div")
     <|> (Eq <$ stringP "==")
+    <|> (Neq <$ stringP "!=")
+    <|> (Gt <$ stringP ">")
+    <|> (Lt <$ stringP "<")
 
+ifP :: Parser Expr
+ifP = do
+  _ <- charP '(' *> stringP "if" *> notNull ws
+  g <- exprP <* notNull ws
+  e1 <- exprP <* notNull ws
+  If g e1 <$> exprP <* ws <* charP ')'
