@@ -24,7 +24,9 @@ exprP =
   builtinP
     <|> constP
     <|> ifP
+    <|> defineP
     <|> parseList
+    <|> varP
 
 constP :: Parser Expr
 constP =
@@ -33,6 +35,9 @@ constP =
 
 parseList :: Parser Expr
 parseList = List <$> (charP '(' *> ws *> sepBy ws exprP <* ws <* charP ')')
+
+varP :: Parser Expr
+varP = Var <$> wordP
 
 builtinP :: Parser Expr
 builtinP = (parseBuiltin >>= parseArgs) <* ws <* charP ')'
@@ -57,3 +62,10 @@ ifP = do
   g <- exprP <* notNull ws
   e1 <- exprP <* notNull ws
   If g e1 <$> exprP <* ws <* charP ')'
+
+defineP :: Parser Expr
+defineP = do
+  _ <- charP '(' *> ws *> stringP "define" <* notNull ws
+  symbol <- wordP <* notNull ws
+  e <- exprP <* ws <* charP ')'
+  return $ Define symbol e
