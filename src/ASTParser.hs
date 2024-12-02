@@ -25,6 +25,7 @@ exprP =
     <|> constP
     <|> ifP
     <|> lamP
+    <|> parseApply
     <|> defineP
     <|> parseList
     <|> varP
@@ -87,3 +88,11 @@ lamP = do
   _ <- charP '(' *> ws *> stringP "lambda" *> notNull ws
   ids <- charP '(' *> ws *> sepBy ws wordP <* ws <* charP ')' <* ws
   Lam ids <$> exprP <* ws <* charP ')'
+
+parseApply :: Parser Expr
+parseApply = do
+  f <- stringP "%{" *> exprP
+  _ <- charP ':'
+  ins <- sepBy ws exprP
+  _ <- charP '}'
+  return $ Apply f ins

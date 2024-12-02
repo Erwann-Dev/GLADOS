@@ -19,6 +19,7 @@ data Expr
   | Var Symbol
   | Define String Expr
   | Lam [Symbol] Expr
+  | Apply Expr [Expr]
   deriving (Show, Eq)
 
 data Value
