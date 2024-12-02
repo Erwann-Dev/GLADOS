@@ -24,6 +24,7 @@ exprP =
   builtinP
     <|> constP
     <|> ifP
+    <|> lamP
     <|> defineP
     <|> parseList
     <|> varP
@@ -64,8 +65,25 @@ ifP = do
   If g e1 <$> exprP <* ws <* charP ')'
 
 defineP :: Parser Expr
-defineP = do
+defineP = defineLamP <|> defineP'
+
+defineP' :: Parser Expr
+defineP' = do
   _ <- charP '(' *> ws *> stringP "define" <* notNull ws
   symbol <- wordP <* notNull ws
   e <- exprP <* ws <* charP ')'
   return $ Define symbol e
+
+defineLamP :: Parser Expr
+defineLamP = do
+  _ <- charP '(' *> ws *> stringP "define" <* notNull ws
+  symbol <- wordP <* notNull ws
+  ids <- charP '(' *> ws *> sepBy ws wordP <* ws <* charP ')' <* ws
+  e <- exprP <* ws <* charP ')'
+  return $ Define symbol (Lam ids e)
+
+lamP :: Parser Expr
+lamP = do
+  _ <- charP '(' *> ws *> stringP "lambda" *> notNull ws
+  ids <- charP '(' *> ws *> sepBy ws wordP <* ws <* charP ')' <* ws
+  Lam ids <$> exprP <* ws <* charP ')'

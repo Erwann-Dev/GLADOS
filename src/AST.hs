@@ -18,6 +18,7 @@ data Expr
   | If Expr Expr Expr
   | Var Symbol
   | Define String Expr
+  | Lam [Symbol] Expr
   deriving (Show, Eq)
 
 data Value
