@@ -27,6 +27,7 @@ data Value
   | BoolVal Bool
   | ListVal [Value]
   | Closure [Symbol] Expr Env
+  | Null
   deriving (Eq)
 
 instance Show Value where
