@@ -1,5 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
-module ASTEval where
+
+module ASTEval (
+  State (..),
+  eval,
+) where
 
 import AST
 import Control.Applicative
@@ -99,7 +103,7 @@ eval (Var str) env = do
   mem <- get
   case lookup str env <|> lookup str mem of
     Just x -> return x
-    Nothing -> fail $ "Deref: " ++ str ++ " not found"
+    Nothing -> fail $ "variable " ++ str ++ " is not bound."
 eval (Define str e) env = do
   e' <- eval e env
   mem <- get

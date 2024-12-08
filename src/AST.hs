@@ -1,4 +1,8 @@
-module AST where
+module AST
+  ( Expr(..)
+  , Value(..)
+  , Env
+  ) where
 
 type Symbol = String
 type Env = [(Symbol, Value)]
