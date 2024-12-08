@@ -9,7 +9,6 @@ import ASTParser
 import ASTEval
 import Parser
 import AST
-import Control.Monad
 
 getStdin :: IO String
 getStdin = isEOF >>= \eof ->
