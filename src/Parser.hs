@@ -7,12 +7,10 @@ module Parser (
   stringLiteral,
   ws,
   sepBy,
-  parseFile,
 ) where
 
 import Control.Applicative
 import Data.Char
-import Utils
 
 -- NOTE: no proper error reporting
 newtype Parser a = Parser
@@ -79,8 +77,3 @@ ws = spanP isSpace
 
 sepBy :: Parser a -> Parser b -> Parser [b]
 sepBy sep element = (:) <$> element <*> many (sep *> element) <|> pure []
-
-parseFile :: FilePath -> Parser a -> IO (Maybe a)
-parseFile fileName parser = do
-  input <- tryReadFile fileName
-  return (snd <$> runParser parser input)

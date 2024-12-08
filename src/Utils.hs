@@ -5,24 +5,18 @@
 -- Utils.hs
 -}
 
-module Utils (exErr, tryReadFile, printHelp) where
+module Utils
+  ( tryReadFile
+  , printHelp
+  ) where
 
-import System.Exit
-import System.IO
 import System.IO.Error
 import Control.Exception
 
-exErr:: String -> IO ()
-exErr s = hPutStrLn stderr ("glados: " ++ s) >> exitWith (ExitFailure 84)
-
 printHelp :: IO ()
 printHelp =
-    putStrLn "USAGE: ./mypandoc -i ifile -f oformat [-o ofile] [-e iformat]" >>
-    putStrLn "     ifile        path to the file to convert" >>
-    putStrLn "     oformat       output format (xml, json, markdown)" >>
-    putStrLn "     ofile        path to the output file" >>
-    putStrLn "     iformat       input format (xml, json, markdown)" >>
-    exitWith (ExitFailure 84)
+    putStrLn "USAGE: ./glados [file]" >>
+    putStrLn "     file        file to be converted (leave empty to read user input)"
 
 handleFileError :: IOError -> Maybe String
 handleFileError er
@@ -30,9 +24,9 @@ handleFileError er
   | isPermissionError   er = Just "fileError: permission denied"
   | otherwise              = Just "fileError: Couldn't open file"
 
-tryReadFile :: String -> IO String
+tryReadFile :: String -> IO (Either String String)
 tryReadFile path = do
         eitherExceptionFile <- tryJust handleFileError (readFile path)
         case eitherExceptionFile of
-           Left  err  -> exErr err >> return ""
-           Right file -> return file
+           Left  err  -> return $ Left err
+           Right file -> return $ Right file
