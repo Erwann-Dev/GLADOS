@@ -4,3 +4,4 @@ glados.cabal
 stack.yaml.lock
 glados
 test/coverage/
+docs/

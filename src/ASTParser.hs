@@ -1,6 +1,5 @@
 module ASTParser (
   lispP,
-  exprP,
 ) where
 
 import AST
@@ -74,21 +73,18 @@ ifP = do
   If g e1 <$> exprP <* ws <* charP ')'
 
 defineP :: Parser Expr
-defineP = defineLamP <|> defineP'
+defineP = charP '(' *> ws *> stringP "define" *> notNull ws *> (defineLamP <|> defineP') <* ws <* charP ')'
 
 defineP' :: Parser Expr
-defineP' = do
-  _ <- charP '(' *> ws *> stringP "define" <* notNull ws
-  symbol <- wordP <* notNull ws
-  e <- exprP <* ws <* charP ')'
-  return $ Define symbol e
+defineP' = Define <$> (wordP <* notNull ws) <*> exprP
 
 defineLamP :: Parser Expr
 defineLamP = do
-  _ <- charP '(' *> ws *> stringP "define" <* notNull ws
+  _ <- charP '(' *> ws
   symbol <- wordP <* notNull ws
-  ids <- charP '(' *> ws *> sepBy ws wordP <* ws <* charP ')' <* ws
-  e <- exprP <* ws <* charP ')'
+  ids <- sepBy ws wordP
+  _ <- ws <* charP ')' <* notNull ws
+  e <- exprP
   return $ Define symbol (Lam ids e)
 
 lamP :: Parser Expr
