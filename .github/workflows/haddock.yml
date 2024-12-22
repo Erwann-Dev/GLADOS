@@ -1,19 +1,17 @@
-name: Haddock Documentation
+name: Documentation
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main, master ]
 
 jobs:
-  generate-docs:
+  docs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-    - name: Check out code
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v3
 
     - name: Install GHC and Stack
       run: |
@@ -29,16 +27,15 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-stack-
 
-    - name: Build the project
-      run:
+    - name: Build Documentation
+      run: |
         stack build --haddock --haddock-deps
         mkdir -p docs
         cp -r $(stack path --local-doc-root)/* docs/
         echo "<meta http-equiv=\"refresh\" content=\"0; url=./HAL/index.html\">" > docs/index.html
 
-
-    - name: Upload Haddock documentation as artifact
+    - name: Archive Documentation
       uses: actions/upload-artifact@v3
       with:
-        name: glados-docs
+        name: documentation
         path: docs/
