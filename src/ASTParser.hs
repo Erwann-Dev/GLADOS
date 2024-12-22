@@ -1,15 +1,20 @@
-module ASTParser
-  ( lispP
-  , exprP
-  ) where
+module ASTParser (
+  lispP,
+  exprP,
+) where
 
 import AST
 import Control.Applicative
 import Data.Char
 import Parser
 
+isValidChar :: Char -> Bool
+isValidChar c = isAlpha c || c == '_' || c == '-' || isDigit c
+
 wordP :: Parser String
-wordP = notNull $ spanP isAlpha
+wordP = do
+  str <- notNull $ spanP isValidChar
+  if isDigit (head str) then empty else return str
 
 integerP :: Parser Int
 integerP = Parser f
@@ -17,9 +22,9 @@ integerP = Parser f
   f ('-' : input) = runParser (negate . read <$> notNull (spanP isDigit)) input
   f input = runParser (read <$> notNull (spanP isDigit)) input
 
-lispP :: Parser Expr
+lispP :: Parser [Expr]
 lispP = Parser $ \input -> do
-  (input', res) <- runParser exprP input
+  (input', res) <- runParser (ws *> sepBy ws exprP <* ws) input
   if input' == "" then Just (input', res) else Nothing
 
 exprP :: Parser Expr

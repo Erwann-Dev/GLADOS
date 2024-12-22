@@ -1,17 +1,20 @@
 {-# LANGUAGE LambdaCase #-}
+
 module Main (main) where
 
-import System.Environment
-import System.IO
-import System.Exit
-import Utils
-import ASTParser
-import ASTEval
-import Parser
 import AST
+import ASTEval
+import ASTParser
+import Control.Monad
+import Parser
+import System.Environment
+import System.Exit
+import System.IO
+import Utils
 
 getStdin :: IO String
-getStdin = isEOF >>= \eof ->
+getStdin =
+  isEOF >>= \eof ->
     if eof
       then pure ""
       else do
@@ -21,11 +24,11 @@ getStdin = isEOF >>= \eof ->
 
 executeLines :: Env -> [Expr] -> IO ()
 executeLines _ [] = pure ()
-executeLines env (x:xs) = do
+executeLines env (x : xs) = do
   case runState (eval x []) env of
     Left err -> putStrLn err >> exitWith (ExitFailure 84)
     Right (res, env') -> do
-      if (show res /= "") then putStrLn (show res) else pure ()
+      when (show res /= "") $ print res
       executeLines env' xs
 
 main :: IO ()
@@ -33,10 +36,12 @@ main = do
   args <- getArgs
   fileInput <- case args of
     [] -> getStdin
-    [name] -> (tryReadFile name) >>= \case
-      Right file -> pure file
-      Left err -> putStrLn err >> exitWith (ExitFailure 84)
+    [name] ->
+      tryReadFile name >>= \case
+        Right file -> pure file
+        Left err -> putStrLn err >> exitWith (ExitFailure 84)
     _ -> printHelp >> exitWith (ExitFailure 84)
-  pure (runParser (sepBy ws exprP) fileInput) >>= \case
-    Nothing -> putStrLn "parseError: invalid syntax" >> exitWith (ExitFailure 84)
-    Just (_, expressions) -> executeLines [] expressions 
+  tryEval (runParser lispP fileInput)
+ where
+  tryEval Nothing = putStrLn "parseError: invalid syntax" >> exitWith (ExitFailure 84)
+  tryEval (Just (_, expressions)) = executeLines [] expressions
