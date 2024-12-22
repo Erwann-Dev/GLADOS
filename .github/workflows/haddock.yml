@@ -6,10 +6,10 @@ on:
       - main
 
 jobs:
-  build:
+  generate-docs:
     runs-on: ubuntu-latest
     permissions:
-      content: write
+      contents: write
 
     steps:
     - name: Check out code
