@@ -9,18 +9,20 @@ NAME	=	glados
 
 STACK	=	stack
 
-BIN_DIR := $(shell $(STACK) path --local-install-root)
+DOCS_DIR := $(shell $(STACK) path --local-doc-root)
 
-all:
-	$(STACK) build
-	cp $(BIN_DIR)/bin/$(NAME) ./
+all:	$(NAME)
 
-run:
+$(NAME):
+	$(STACK) build --copy-bins --local-bin-path .
+
+run:	$(NAME)
 	./$(NAME)
 
 clean:
 	$(STACK) clean
 	rm -rf test/coverage/*
+	rm -rf docs
 
 fclean: clean
 	$(STACK) clean --full
@@ -29,5 +31,10 @@ fclean: clean
 tests_run :
 	$(STACK) test --coverage
 	$(STACK) hpc report --all --destdir test/coverage/
+
+docs:	fclean
+	$(STACK) build --haddock
+	mkdir -p docs
+	cp -r $(DOCS_DIR)/* docs
 
 re : fclean all
