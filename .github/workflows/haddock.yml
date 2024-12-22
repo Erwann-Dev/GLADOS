@@ -1,0 +1,44 @@
+name: Haddock Documentation
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      content: write
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Install GHC and Stack
+      run: |
+        sudo apt update
+        sudo apt install -y ghc
+        curl -sSL https://get.haskellstack.org/ | sh
+
+    - name: Cache Stack
+      uses: actions/cache@v3
+      with:
+        path: ~/.stack
+        key: ${{ runner.os }}-stack-${{ hashFiles('stack.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-stack-
+
+    - name: Build the project
+      run:
+        stack build --haddock --haddock-deps
+        mkdir -p docs
+        cp -r $(stack path --local-doc-root)/* docs/
+        echo "<meta http-equiv=\"refresh\" content=\"0; url=./HAL/index.html\">" > docs/index.html
+
+
+    - name: Upload Haddock documentation as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: glados-docs
+        path: docs/
