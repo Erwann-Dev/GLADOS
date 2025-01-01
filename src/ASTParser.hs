@@ -30,8 +30,8 @@ exprP =
   builtinP
     <|> constP
     <|> ifP
-    <|> lamP
     <|> parseApply
+    <|> lamP
     <|> defineP
     <|> listP
     <|> varP
