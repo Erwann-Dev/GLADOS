@@ -50,7 +50,7 @@ data Expr
     Gt Expr Expr
   | -- | Less-than comparison between two expressions.
     Lt Expr Expr
-  | -- | A conditional expression: if (condition) then (true branch) else (false branch).
+  | -- | A ternary conditional expression: condition ? expr1 : expr2.
     Ternary Expr Expr Expr
   | -- | A variable reference.
     Var Symbol
@@ -62,6 +62,8 @@ data Expr
     Apply Expr [Expr]
   | -- | A sequence of expressions, where the last expression is the result.
     Block [Expr]
+  | -- | A conditional expression: if (condition) {expr} elif (condition) {expr} else {expr}.
+    If Expr Expr [(Expr, Expr)] (Maybe Expr)
   deriving
     ( Show
     , -- | Automatically deriving 'Show' and 'Eq' for displaying and comparing expressions.
@@ -95,7 +97,7 @@ closures are represented as "<procedure>".
 -}
 instance Show Value where
   show (NumVal n) = show n
-  show (BoolVal b) = if b then "#t" else "#f"
+  show (BoolVal b) = if b then "true" else "false"
   show (ListVal xs) = "(" ++ unwords (map show xs) ++ ")"
   show (Closure{}) = "<procedure>"
   show _ = ""

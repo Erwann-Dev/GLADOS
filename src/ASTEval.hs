@@ -112,6 +112,16 @@ eval (Define str e) env = do
 eval (Block []) _env = return Null
 eval (Block [e]) env = eval e env
 eval (Block (e : es)) env = eval e env >> eval (Block es) env
+eval (If cond e1 elifs e2) env = do
+  evaledCond <- eval cond env
+  case evaledCond of
+    BoolVal True -> eval e1 env
+    BoolVal False -> case elifs of
+      [] -> case e2 of
+        Just e2' -> eval e2' env
+        Nothing -> return Null
+      ((cond', e') : elifs') -> eval (If cond' e' elifs' e2) env
+    _ -> fail "If: type error"
 
 apply :: Value -> [Value] -> State Env Value
 apply (Closure ids e env) xs

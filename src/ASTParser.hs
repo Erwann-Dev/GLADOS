@@ -1,8 +1,6 @@
 module ASTParser (
   lispP,
   exprP,
-  statementP,
-  blockP,
 ) where
 
 import AST
@@ -62,6 +60,7 @@ exprP' =
     <|> listP
     <|> funcP
     <|> blockP
+    <|> ifP
     <|> varP
 
 constP :: Parser Expr
@@ -159,3 +158,18 @@ funcP = do
   ids <- sepBy (ws *> charP ',' <* ws) wordP
   _ <- ws <* charP ')' <* ws
   Define f . Lam ids <$> blockP
+
+ifP :: Parser Expr
+ifP = do
+  _ <- stringP "if" *> notNull ws
+  cond <- charP '(' *> ws *> exprP <* ws <* charP ')'
+  e1 <- ws *> exprP <* ws
+  elifs <- many $ do
+    _ <- stringP "elif" *> notNull ws
+    cond' <- charP '(' *> ws *> exprP <* ws <* charP ')'
+    e' <- ws *> exprP <* ws
+    return (cond', e')
+  e2 <- optional $ do
+    _ <- stringP "else" *> notNull ws
+    exprP
+  return $ If cond e1 elifs e2
