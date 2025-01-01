@@ -93,13 +93,22 @@ defineLamP = do
 lamP :: Parser Expr
 lamP = do
   _ <- charP '(' *> ws
-  ids <- charP '(' *> ws *> sepBy ws wordP <* ws <* charP ')' <* ws <* stringP "=>" <* ws
+  ids <- (singleParamP <|> multiParamP) <* ws <* stringP "=>" <* ws
   Lam ids <$> exprP <* ws <* charP ')'
+ where
+  singleParamP = do
+    i <- wordP
+    return [i]
+  multiParamP = do
+    _ <- charP '(' <* ws
+    ids <- sepBy (ws *> charP ',' <* ws) wordP
+    _ <- ws <* charP ')'
+    return ids
 
 parseApply :: Parser Expr
 parseApply = do
-  f <- stringP "%{" *> exprP
-  _ <- charP ':'
-  ins <- sepBy ws exprP
-  _ <- charP '}'
-  return $ Apply f ins
+  f <- varP <|> lamP
+  _ <- ws <* charP '(' <* ws
+  params <- sepBy (ws *> charP ',' <* ws) exprP
+  _ <- ws *> charP ')'
+  return $ Apply f params
