@@ -109,6 +109,9 @@ eval (Define str e) env = do
   mem <- get
   set ((str, e') : mem)
   return Null
+eval (Block []) _env = return Null
+eval (Block [e]) env = eval e env
+eval (Block (e : es)) env = eval e env >> eval (Block es) env
 
 apply :: Value -> [Value] -> State Env Value
 apply (Closure ids e env) xs

@@ -1,6 +1,7 @@
 module ASTParser (
   lispP,
   exprP,
+  funcP,
 ) where
 
 import AST
@@ -25,15 +26,27 @@ integerP = Parser f
 lispP :: Parser [Expr]
 lispP = only $ ws *> sepBy ws exprP <* ws
 
+statementP :: Parser Expr
+statementP = exprP <* ws <* charP ';'
+
+blockP :: Parser Expr
+blockP = do
+  _ <- charP '{' <* ws
+  exprs <- sepBy ws statementP
+  _ <- ws <* charP '}'
+  return $ Block exprs
+
 exprP :: Parser Expr
 exprP =
   builtinP
     <|> constP
     <|> ifP
-    <|> parseApply
+    <|> applyP
     <|> lamP
     <|> defineP
     <|> listP
+    <|> funcP
+    <|> blockP
     <|> varP
 
 constP :: Parser Expr
@@ -77,18 +90,10 @@ ifP = do
   If g e1 <$> exprP <* ws <* charP ')'
 
 defineP :: Parser Expr
-defineP = charP '(' *> ws *> stringP "define" *> notNull ws *> (defineLamP <|> defineP') <* ws <* charP ')'
+defineP = charP '(' *> ws *> stringP "define" *> notNull ws *> defineP' <* ws <* charP ')'
 
 defineP' :: Parser Expr
 defineP' = Define <$> (wordP <* notNull ws) <*> exprP
-
-defineLamP :: Parser Expr
-defineLamP = do
-  _ <- charP '(' *> ws
-  symbol <- wordP <* notNull ws
-  ids <- sepBy ws wordP
-  _ <- ws <* charP ')' <* notNull ws
-  Define symbol . Lam ids <$> exprP
 
 lamP :: Parser Expr
 lamP = do
@@ -105,10 +110,19 @@ lamP = do
     _ <- ws <* charP ')'
     return ids
 
-parseApply :: Parser Expr
-parseApply = do
+applyP :: Parser Expr
+applyP = do
   f <- varP <|> lamP
   _ <- ws <* charP '(' <* ws
   params <- sepBy (ws *> charP ',' <* ws) exprP
   _ <- ws *> charP ')'
   return $ Apply f params
+
+funcP :: Parser Expr
+funcP = do
+  _ <- stringP "fn" *> notNull ws
+  f <- wordP <* ws
+  _ <- charP '(' <* ws
+  ids <- sepBy (ws *> charP ',' <* ws) wordP
+  _ <- ws <* charP ')' <* ws
+  Define f . Lam ids <$> blockP

@@ -60,6 +60,8 @@ data Expr
     Lam [Symbol] Expr
   | -- | Function application with an expression as the function and a list of arguments.
     Apply Expr [Expr]
+  | -- | A sequence of expressions, where the last expression is the result.
+    Block [Expr]
   deriving
     ( Show
     , -- | Automatically deriving 'Show' and 'Eq' for displaying and comparing expressions.
