@@ -39,7 +39,7 @@ exprP =
 constP :: Parser Expr
 constP =
   Number <$> integerP
-    <|> (Boolean . (== "#t") <$> (stringP "#t" <|> stringP "#f"))
+    <|> (Boolean . (== "true") <$> (stringP "true" <|> stringP "false"))
 
 listP :: Parser Expr
 listP = List <$> (charP '(' *> ws *> sepBy ws exprP <* ws <* charP ')')
