@@ -90,11 +90,11 @@ eval (Lt e1 e2) env = do
     (NumVal n1, NumVal n2) -> return $ BoolVal (n1 < n2)
     _ -> fail "(<): type error"
 eval (Lam ids e) env = return $ Closure ids e env
-eval (If g e1 e2) env =
+eval (Ternary g e1 e2) env =
   eval g env >>= \case
     BoolVal True -> eval e1 env
     BoolVal False -> eval e2 env
-    _ -> fail "If: type error"
+    _ -> fail "Ternary: type error"
 eval (Apply f xs) env = do
   f' <- eval f env
   xs' <- mapM (`eval` env) xs

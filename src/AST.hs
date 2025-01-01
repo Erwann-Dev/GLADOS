@@ -51,7 +51,7 @@ data Expr
   | -- | Less-than comparison between two expressions.
     Lt Expr Expr
   | -- | A conditional expression: if (condition) then (true branch) else (false branch).
-    If Expr Expr Expr
+    Ternary Expr Expr Expr
   | -- | A variable reference.
     Var Symbol
   | -- | A variable definition, associating a symbol with an expression.
