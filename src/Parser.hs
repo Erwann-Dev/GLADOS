@@ -10,6 +10,7 @@ module Parser (
   stringP,
   spanP,
   notNull,
+  only,
   stringLiteral,
   ws,
 
@@ -130,6 +131,24 @@ notNull (Parser p) =
     if null xs
       then Nothing
       else Just (input', xs)
+
+{- | 'only' ensures that the input is fully consumed by the parser.
+
+If the parser consumes the entire input, it returns the parsed value. Otherwise,
+it fails.
+
+@
+only (charP \'a\') \"a\" == Just (\"\", \'a\')
+only (charP \'a\') \"ab\" == Nothing
+@
+-}
+only :: Parser a -> Parser a
+only (Parser p) =
+  Parser $ \input -> do
+    (input', x) <- p input
+    if null input'
+      then Just (input', x)
+      else Nothing
 
 {- | 'stringLiteral' parses a string literal surrounded by double quotes.
 

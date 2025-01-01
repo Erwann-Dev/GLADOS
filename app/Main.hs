@@ -31,11 +31,32 @@ executeLines env (x : xs) = do
       when (show res /= "") $ print res
       executeLines env' xs
 
+repl :: IO ()
+repl = do
+  putStrLn "Welcome to the LISP interpreter"
+  putStrLn "Type :q to quit"
+  repl' []
+
+repl' :: Env -> IO ()
+repl' env = do
+  line <- putStr "> " >> hFlush stdout >> getLine
+  case line of
+    ":q" -> putStrLn "Exited."
+    _ -> case runParser (only exprP) line of
+      Nothing -> putStrLn "parseError: invalid syntax" >> repl' env
+      Just (_, expression) -> do
+        case runState (eval expression []) env of
+          Left err -> putStrLn ("*** ERROR : " ++ err) >> repl' env
+          Right (res, env') -> do
+            when (show res /= "") $ print res
+            repl' env'
+
 main :: IO ()
 main = do
   args <- getArgs
   fileInput <- case args of
     [] -> getStdin
+    ["repl"] -> repl >> exitSuccess
     [name] ->
       tryReadFile name >>= \case
         Right file -> pure file

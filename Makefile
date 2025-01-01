@@ -11,13 +11,8 @@ STACK	=	stack
 
 DOCS_DIR := $(shell $(STACK) path --local-doc-root)
 
-all:	$(NAME)
-
-$(NAME):
+all:
 	$(STACK) build --copy-bins --local-bin-path .
-
-run:	$(NAME)
-	./$(NAME)
 
 clean:
 	$(STACK) clean

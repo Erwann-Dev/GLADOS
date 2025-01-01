@@ -1,5 +1,6 @@
 module ASTParser (
   lispP,
+  exprP,
 ) where
 
 import AST
@@ -22,9 +23,7 @@ integerP = Parser f
   f input = runParser (read <$> notNull (spanP isDigit)) input
 
 lispP :: Parser [Expr]
-lispP = Parser $ \input -> do
-  (input', res) <- runParser (ws *> sepBy ws exprP <* ws) input
-  if input' == "" then Just (input', res) else Nothing
+lispP = only $ ws *> sepBy ws exprP <* ws
 
 exprP :: Parser Expr
 exprP =
@@ -34,7 +33,7 @@ exprP =
     <|> lamP
     <|> parseApply
     <|> defineP
-    <|> parseList
+    <|> listP
     <|> varP
 
 constP :: Parser Expr
@@ -42,11 +41,16 @@ constP =
   Number <$> integerP
     <|> (Boolean . (== "#t") <$> (stringP "#t" <|> stringP "#f"))
 
-parseList :: Parser Expr
-parseList = List <$> (charP '(' *> ws *> sepBy ws exprP <* ws <* charP ')')
+listP :: Parser Expr
+listP = List <$> (charP '(' *> ws *> sepBy ws exprP <* ws <* charP ')')
+
+keywords :: [String]
+keywords = ["define", "lambda", "if", "+", "-", "*", "div", "==", "!=", ">", "<"]
 
 varP :: Parser Expr
-varP = Var <$> wordP
+varP = do
+  str <- wordP
+  if str `elem` keywords then empty else return $ Var str
 
 builtinP :: Parser Expr
 builtinP = (parseBuiltin >>= parseArgs) <* ws <* charP ')'
