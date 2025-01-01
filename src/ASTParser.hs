@@ -88,13 +88,12 @@ defineLamP = do
   symbol <- wordP <* notNull ws
   ids <- sepBy ws wordP
   _ <- ws <* charP ')' <* notNull ws
-  e <- exprP
-  return $ Define symbol (Lam ids e)
+  Define symbol . Lam ids <$> exprP
 
 lamP :: Parser Expr
 lamP = do
-  _ <- charP '(' *> ws *> stringP "lambda" *> notNull ws
-  ids <- charP '(' *> ws *> sepBy ws wordP <* ws <* charP ')' <* ws
+  _ <- charP '(' *> ws
+  ids <- charP '(' *> ws *> sepBy ws wordP <* ws <* charP ')' <* ws <* stringP "=>" <* ws
   Lam ids <$> exprP <* ws <* charP ')'
 
 parseApply :: Parser Expr
