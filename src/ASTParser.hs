@@ -42,7 +42,7 @@ constP =
     <|> (Boolean . (== "true") <$> (stringP "true" <|> stringP "false"))
 
 listP :: Parser Expr
-listP = List <$> (charP '(' *> ws *> sepBy ws exprP <* ws <* charP ')')
+listP = List <$> (charP '[' *> ws *> sepBy (ws *> charP ',' <* ws) exprP <* ws <* charP ']')
 
 keywords :: [String]
 keywords = ["define", "lambda", "if", "+", "-", "*", "div", "==", "!=", ">", "<"]
