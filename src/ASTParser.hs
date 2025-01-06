@@ -79,8 +79,8 @@ varP = do
   str <- wordP
   if str `elem` keywords then empty else return $ Var str
 
-inlineP :: Parser Expr
-inlineP = ternaryP <|> inlineP'
+inlineP :: Parser Expr -- no need to place assignP in another function, it only searches for words (therefore no recursivity)
+inlineP = assignP <|> ternaryP <|> inlineP'
 
 inlineP' :: Parser Expr
 inlineP' = booleanOpP <|> inlineP''
@@ -93,6 +93,12 @@ inlineP''' = mulDivP <|> inlineP''''
 
 inlineP'''' :: Parser Expr -- Inline expressions except for boolean, arithmetic, and multiplication/division operations
 inlineP'''' = charP '(' *> ws *> exprP <* ws <* charP ')' <|> exprP'
+
+assignP :: Parser Expr
+assignP = do
+  sym <- wordP
+  _ <- ws <* charP '=' <* ws
+  Assign sym <$> exprP
 
 ternaryP :: Parser Expr
 ternaryP = do
@@ -122,10 +128,10 @@ mulDivP = do
   con e1 <$> inlineP'''
 
 defineP :: Parser Expr
-defineP = charP '(' *> ws *> stringP "define" *> notNull ws *> defineP' <* ws <* charP ')'
-
-defineP' :: Parser Expr
-defineP' = Define <$> (wordP <* notNull ws) <*> exprP
+defineP = do
+  sym <- stringP "let" *> notNull ws *> wordP
+  _ <- ws *> charP '=' <* ws
+  Define sym <$> exprP
 
 lamP :: Parser Expr
 lamP = do

@@ -56,6 +56,8 @@ data Expr
     Var Symbol
   | -- | A variable definition, associating a symbol with an expression.
     Define String Expr
+  | -- | A variable assignment, changing the value of a symbol.
+    Assign String Expr
   | -- | A lambda expression with a list of parameters and a body.
     Lam [Symbol] Expr
   | -- | Function application with an expression as the function and a list of arguments.

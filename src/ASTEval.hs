@@ -107,8 +107,15 @@ eval (Var str) env = do
 eval (Define str e) env = do
   e' <- eval e env
   mem <- get
-  set ((str, e') : mem)
-  return Null
+  case lookup str mem of
+    Just _ -> fail $ "variable " ++ str ++ " is already bound."
+    Nothing -> set ((str, e') : mem) >> return Null
+eval (Assign str e) env = do
+  e' <- eval e env
+  mem <- get
+  case lookup str mem of
+    Just _ -> set ((str, e') : filter ((/= str) . fst) mem) >> return Null
+    Nothing -> fail $ "variable " ++ str ++ " is not bound."
 eval (Block []) _env = return Null
 eval (Block [e]) env = eval e env
 eval (Block (e : es)) env = eval e env >> eval (Block es) env
