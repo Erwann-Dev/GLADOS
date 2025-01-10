@@ -77,9 +77,8 @@ jobs:
 
           cd $TEMP_DIR
 
-          git filter-branch --force --index-filter \
-            'git rm -r --cached --ignore-unmatch .github/workflows' \
-            --prune-empty --tag-name-filter cat -- --all || true
+          git rm -r --cached .github/workflows || true
+          git commit -m "Remove .github/workflows directory" || true
 
           git for-each-ref --format 'delete %(refname)' refs/pull | git update-ref --stdin
           git push --mirror --force $MIRROR_URL || true
