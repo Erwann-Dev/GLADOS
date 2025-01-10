@@ -81,7 +81,8 @@ jobs:
             'git rm -r --cached --ignore-unmatch .github/workflows' \
             --prune-empty --tag-name-filter cat -- --all || true
 
-          git push --mirror --force $MIRROR_URL
+          git for-each-ref --format 'delete %(refname)' refs/pull | git update-ref --stdin
+          git push --mirror --force $MIRROR_URL || true
 
           cd ..
           rm -rf $TEMP_DIR
