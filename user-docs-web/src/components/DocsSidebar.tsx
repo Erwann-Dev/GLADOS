@@ -1,28 +1,42 @@
-import { Menu, X } from "lucide-react";
+import { FunctionSquareIcon, Menu, X } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import cLogo from "/c_logo.svg";
 import DocsSidebarItem, { Article, Section } from "./DocsSidebarItem";
+import Introduction from "../pages/Introduction"
+import SystemRequirements from "../pages/SystemRequirements";
+import BasicTypes from "../pages/BasicTypes";
+import Variables from "../pages/Variables";
+import Pointers from "../pages/Pointers";
+import Strings from "../pages/Strings";
+import TypeCasting from "../pages/TypeCasting";
+import UserDefinedTypes from "../pages/UserDefinedTypes";
+import ControlFlow from "../pages/ControlFlow";
+import Functions from "../pages/Functions";
+import Operators from "../pages/Operators";
+import SystemCalls from "../pages/SystemCalls";
+import Preprocessor from "../pages/Preprocessor";
+import FutureFeatures from "../pages/FutureFeatures";
 
 const articles: (Article | Section)[] = [
-  { title: "Introduction", content: <h1>tos</h1> },
-  { title: "System Requirements", content: <h1>tos</h1> },
+  { title: "Introduction", content: <Introduction />},
+  { title: "System Requirements", content: <SystemRequirements /> },
   {
     title: "Types",
     articles: [
-      { title: "Basic types", content: <h1>how-does-it-work</h1> },
-      { title: "Variables", content: <h1>how-does-it-work</h1> },
-      { title: "Pointers", content: <h1>how-does-it-work</h1> },
-      { title: "Strings", content: <h1>tos</h1> },
-      { title: "Type casting", content: <h1>tos</h1> },
-      { title: "User defined types", content: <h1>tos</h1> },
+      { title: "Basic types", content: <BasicTypes /> },
+      { title: "Variables", content: <Variables /> },
+      { title: "Pointers", content: <Pointers /> },
+      { title: "Strings", content: <Strings /> },
+      { title: "Type casting", content: <TypeCasting /> },
+      { title: "User defined types", content: < UserDefinedTypes /> },
     ],
   },
-  { title: "Control flow", content: <h1>tos</h1> },
-  { title: "Functions", content: <h1>tos</h1> },
-  { title: "Operators", content: <h1>tos</h1> },
-  { title: "System Calls", content: <h1>tos</h1> },
-  { title: "Preprocessors", content: <h1>tos</h1> },
-  { title: "Future features", content: <h1>tos</h1> },
+  { title: "Control flow", content: <ControlFlow /> },
+  { title: "Functions", content: <Functions /> },
+  { title: "Operators", content: <Operators /> },
+  { title: "System Calls", content: <SystemCalls /> },
+  { title: "Preprocessors", content: <Preprocessor /> },
+  { title: "Future features", content: <FutureFeatures /> },
 ];
 
 const findRoute: (route: string, items: (Article | Section)[]) => Article | undefined = (
@@ -56,8 +70,8 @@ const DocsSidebar: React.FC = () => {
   }, [location]);
 
   return (
-    <div className="flex flex-row p-5 min-h-dvh ">
-      <div className="hidden sm:block border border-violet-900 p-1.5 rounded-2xl min-w-56">
+    <div className="flex flex-row h-dvh p-5">
+      <div className="border border-violet-900 p-1.5 rounded-2xl min-w-56">
         <div className="border-2 border-violet-900 flex flex-col bg-violet-50 rounded-xl px-2 sm:px-3 py-2 h-full">
           <div className="flex flex-row items-center mb-2">
             <img src={cLogo} className="h-8" alt="Logo" />
@@ -74,8 +88,8 @@ const DocsSidebar: React.FC = () => {
           ))}
         </div>
       </div>
-      <div className="ml-5 flex-1">
-      { content }
+      <div className="ml-5 flex-1 overflow-auto">
+        { content }
       </div>
     </div>
   );
