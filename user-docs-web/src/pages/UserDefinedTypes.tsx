@@ -11,9 +11,13 @@ const UserDefinedTypes: React.FC = () => {
         <pre className="bg-gray-200 text-black p-4 rounded-lg overflow-x-auto mb-4">
           <code className="text-sm">
             {`\
-enum test { a, b, c }
+enum status_e {
+    active,
+    inactive,
+    undefined
+}
 
-test example = test.a\
+status_e example = status_e::active\
             `}
           </code>
         </pre>
@@ -23,13 +27,13 @@ test example = test.a\
         <pre className="bg-gray-200 text-black p-4 rounded-lg overflow-x-auto mb-4">
           <code className="text-sm">
             {`\
-struct test {
-    u8 a,
-    u8 b
+struct rectangle_s {
+    u8 width,
+    u8 height
 }
 
-mut test example = test {a: 3, b: 4}
-u8 value = example.a\
+mut rectangle_s example = rectangle_s {width: 3, height: 4}
+u8 value = example.width\
             `}
           </code>
         </pre>

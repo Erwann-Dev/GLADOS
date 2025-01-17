@@ -32,7 +32,7 @@ const DocsSidebarItem: React.FC<{
     return (
       <button
         onClick={() => onSelectedArticle?.(item.title)}
-        className="group text-start px-2 py-1"
+        className="group text-start px-2 py-1 block"
       >
         <span
           className={`group-hover:underline overflow-hidden text-nowrap ${

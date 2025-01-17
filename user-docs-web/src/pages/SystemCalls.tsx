@@ -5,7 +5,10 @@ const SystemCalls: React.FC = () => {
     <div className="container mx-auto p-6">
       <section className="text-gray-800">
         <h1 className="text-3xl font-bold mb-4">System Calls</h1>
-
+        <p className="text-lg leading-relaxed mb-4">
+          C¸ provides direct access to system calls through its pointer system, allowing low-level interaction with the
+          operating system.
+        </p>
         {/* System Call Interface Section */}
         <h2 className="text-2xl font-semibold mb-2">System Call Interface</h2>
         <p className="text-lg leading-relaxed mb-4">

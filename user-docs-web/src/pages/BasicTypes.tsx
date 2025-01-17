@@ -20,7 +20,6 @@ const BasicTypes: React.FC = () => {
 
   const otherTypes = [
     { type: 'void', description: 'represents the absence of a type' },
-    { type: 'bool', description: 'Boolean values, typically implemented using u8 with preprocessor directive', extra: '#define bool u8' },
   ];
 
   return (
@@ -54,13 +53,14 @@ const BasicTypes: React.FC = () => {
           {otherTypes.map((item, index) => (
             <li key={index} className="text-lg">
               <Code>{item.type}</Code>: {item.description}
-              {item.extra && (
-                <div className="text-base mt-1 text-gray-600">
-                  <Code>{item.extra}</Code>
-                </div>
-              )}
             </li>
           ))}
+          <li className='text-lg'>
+            Boolean values are typically implemented using <Code>u8</Code> with preprocessor directive:<br />
+            <Code>#define bool u8</Code><br/>
+            <Code>#define TRUE 1</Code><br />
+            <Code>#define FALSE 0</Code>
+          </li>
         </ul>
       </section>
     </div>

@@ -13,15 +13,8 @@ const TypeCasting: React.FC = () => {
         <pre className="bg-gray-200 text-black p-4 rounded-lg overflow-x-auto mb-4">
           <code className="text-sm">
             {`\
-// Numeric type casting
 u8 a = 3
-u32 b = a as u32
-
-// Allowed casting operations:
-// - Between enums and u64
-// - Between ptr? and u64
-// - Between ptr and u64
-// - Between all numeric types\
+u32 b = a as u32\
             `}
           </code>
         </pre>

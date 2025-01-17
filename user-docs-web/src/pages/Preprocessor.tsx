@@ -10,7 +10,7 @@ const Preprocessor: React.FC = () => {
         {/* Comments Section */}
         <h2 className="text-2xl font-semibold mb-2">Comments</h2>
         <p className="text-lg leading-relaxed mb-4">
-          Ç supports both single-line and multi-line comments. Here's an example:
+          Ç supports both single-line and multi-line comments:
         </p>
         <pre className="bg-gray-200 text-black p-4 rounded-lg overflow-x-auto mb-4">
           <code className="text-sm">

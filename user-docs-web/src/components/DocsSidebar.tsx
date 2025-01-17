@@ -60,7 +60,7 @@ const findRoute: (route: string, items: (Article | Section)[]) => Article | unde
 }
 
 const DocsSidebar: React.FC = () => {
-  const [ location, setLocation ] = useState<string>("How does it work");
+  const [ location, setLocation ] = useState<string>("Introduction");
   const [ content, setContent ] = useState<React.ReactNode>(<h1>default</h1>);
 
   useEffect(() => {
@@ -98,7 +98,7 @@ const DocsSidebar: React.FC = () => {
 const DocsMobileSidebar: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const [ location, setLocation ] = useState<string>("How does it work");
+  const [ location, setLocation ] = useState<string>("Introduction");
   const [ content, setContent ] = useState<React.ReactNode>(<h1>default</h1>);
 
   useEffect(() => {
