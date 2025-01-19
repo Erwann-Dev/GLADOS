@@ -39,32 +39,32 @@ exprP' =
 
 keywords :: [String]
 keywords =
-  [ "u8"
-  , "u16"
-  , "u32"
-  , "u64"
-  , "i8"
-  , "i16"
-  , "i32"
-  , "i64"
-  , "f32"
-  , "f64"
-  , "void"
-  , "mut"
-  , "ptr"
-  , "return"
-  , "not"
-  , "or"
-  , "and"
-  , "enum"
-  , "struct"
-  , "if"
-  , "else"
-  , "while"
-  , "for"
-  , "as"
-  , "sizeof"
-  , "syscall"
+  [ "u8",
+    "u16",
+    "u32",
+    "u64",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "f32",
+    "f64",
+    "void",
+    "mut",
+    "ptr",
+    "return",
+    "not",
+    "or",
+    "and",
+    "enum",
+    "struct",
+    "if",
+    "else",
+    "while",
+    "for",
+    "as",
+    "sizeof",
+    "syscall"
   ]
 
 symbolP :: Parser Symbol
@@ -134,7 +134,7 @@ integerValueP = do
 
 arrayValueP :: Parser Node
 arrayValueP =
-  ArrayV <$> (wrapP '[' ']' $ sepBy (ws *> charP ',' <* ws) exprP)
+  ArrayV <$> wrapP '[' ']' (sepBy (ws *> charP ',' <* ws) exprP)
 
 -- Expression Parsing
 
@@ -151,7 +151,7 @@ variableInitializationP = do
   return $ VarDef name varType value
 
 blockP :: Parser Node
-blockP = Block <$> (wrapP '{' '}' $ sepBy ws exprP)
+blockP = Block <$> wrapP '{' '}' (sepBy ws exprP)
 
 returnP :: Parser Node
 returnP = Return <$> (stringP "return" *> notNull ws *> exprP)
@@ -188,8 +188,8 @@ functionDeclarationP = do
   parameters <- sepBy (ws *> charP ',' <* ws) parameterP <* ws <* charP ')'
   body <- ws *> exprP
   return $ FunctionDeclaration returnType name parameters body
- where
-  parameterP = (,) <$> typeP <*> (notNull ws *> symbolP)
+  where
+    parameterP = (,) <$> typeP <*> (notNull ws *> symbolP)
 
 functionCallP :: Parser Node
 functionCallP =
@@ -207,17 +207,17 @@ structDeclarationP :: Parser Node
 structDeclarationP =
   StructDeclaration
     <$> (stringP "struct" *> notNull ws *> symbolP <* ws)
-    <*> (wrapP '{' '}' $ sepBy (charP ',') structFieldP)
- where
-  structFieldP = (,) <$> typeP <*> (notNull ws *> symbolP)
+    <*> wrapP '{' '}' (sepBy (charP ',') structFieldP)
+  where
+    structFieldP = (,) <$> typeP <*> (notNull ws *> symbolP)
 
 structInitializationP :: Parser Node
 structInitializationP = do
   name <- ws *> identifierP <* ws
   fields <- wrapP '{' '}' $ sepBy (ws *> charP ',' <* ws) structFieldP
   return $ StructInitialization name fields
- where
-  structFieldP = (,) <$> identifierP <* ws <* charP ':' <* ws <*> exprP
+  where
+    structFieldP = (,) <$> identifierP <* ws <* charP ':' <* ws <*> exprP
 
 enumElementP :: Parser Node
 enumElementP = EnumElement <$> identifierP <* charP ':' <*> identifierP
@@ -238,7 +238,7 @@ sizeofP :: Parser Node
 sizeofP =
   (stringP "sizeof" *> charP '(' *> ws)
     *> ( (SizeofType <$> typeP)
-          <|> (SizeofExpr <$> exprP)
+           <|> (SizeofExpr <$> exprP)
        )
     <* (ws <* charP ')')
 
