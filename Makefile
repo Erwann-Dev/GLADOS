@@ -12,7 +12,7 @@ STACK	=	stack
 DOCS_DIR := $(shell $(STACK) path --local-doc-root)
 
 all:
-	$(STACK) build --copy-bins --local-bin-path .
+	$(STACK) build --copy-bins --local-bin-path . --ghc-options "-O2"
 
 clean:
 	$(STACK) clean
