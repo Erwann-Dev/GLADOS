@@ -6,7 +6,6 @@ where
 import AST (Node (..))
 import Bytecode (Bytecode, Instruction (..))
 
-
 newtype State m a = State {runState :: m -> Either String (a, m)}
 
 instance Functor (State m) where
@@ -33,12 +32,11 @@ instance Monad (State m) where
 instance MonadFail (State m) where
   fail = State . const . Left
 
-set :: a -> State a ()
-set x = State $ \_ -> Right ((), x)
+setState :: a -> State a ()
+setState newState = State $ \_ -> Right ((), newState)
 
-get :: State a a
-get = State $ \m -> Right (m, m)
-
+getState :: State a a
+getState = State $ \state -> Right (state, state)
 
 eval :: Node -> Bytecode
 eval (IntV nb) = [Test]
