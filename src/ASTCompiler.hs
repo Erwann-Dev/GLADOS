@@ -1,10 +1,44 @@
-module ASTEval (
+module ASTCompiler (
 
 )
 where
 
 import AST (Node (..))
 import Bytecode (Bytecode, Instruction (..))
+
+
+newtype State m a = State {runState :: m -> Either String (a, m)}
+
+instance Functor (State m) where
+  fmap f (State runstate) = State fun
+   where
+    fun state = do
+      (returned, newState) <- runstate state
+      return (f returned, newState)
+
+instance Applicative (State m) where
+  pure value = State $ \state -> Right (value, state)
+  s1 <*> s2 = State $ \state -> do
+    (f, newState) <- runState s1 state
+    (returned, newState') <- runState s2 newState
+    return (f returned, newState')
+
+instance Monad (State m) where
+  return = pure
+  st >>= f = State $ \state -> do
+    (returned, newState) <- runState st state
+    let st' = f returned
+    runState st' newState
+
+instance MonadFail (State m) where
+  fail = State . const . Left
+
+set :: a -> State a ()
+set x = State $ \_ -> Right ((), x)
+
+get :: State a a
+get = State $ \m -> Right (m, m)
+
 
 eval :: Node -> Bytecode
 eval (IntV nb) = [Test]
