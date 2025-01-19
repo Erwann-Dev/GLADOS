@@ -1,113 +1,77 @@
-{- | The 'AST' module defines the abstract syntax tree (AST) for our simple
-expression language. It includes the representation of expressions,
-values, and environments, and provides the basic data structures to
-evaluate and manipulate the expressions.
--}
-module AST (
-  -- * Types
-  Expr (..),
-  Value (..),
-  Symbol,
-  Env,
-) where
+module AST
+  ( Node (..),
+    Type (..),
+    BasicType (..),
+    TypeSize,
+  )
+where
 
-{- | A 'Symbol' is simply a type alias for a 'String'. It represents variable
-names or function names within expressions.
--}
-type Symbol = String
+type TypeSize = Int
 
-{- | An 'Env' (short for "Environment") is a list of symbol-value pairs, where
-each symbol is associated with a value. It represents the environment in which
-expressions are evaluated.
--}
-type Env = [(Symbol, Value)]
+data Type = Type
+  { basic_type :: BasicType,
+    mutable :: Bool
+  }
+  deriving (Show)
 
-{- | The 'Expr' data type represents various types of expressions in the language.
-It can be a number, a boolean, a list, or more complex expressions like
-arithmetic operations, comparisons, conditionals, variable lookups, function
-definitions, and applications.
--}
-data Expr
-  = -- | A numeric literal.
-    Number Int
-  | -- | A boolean literal.
-    Boolean Bool
-  | -- | A list of expressions.
-    List [Expr]
-  | -- | Addition of two expressions.
-    Add Expr Expr
-  | -- | Subtraction of two expressions.
-    Sub Expr Expr
-  | -- | Multiplication of two expressions.
-    Mul Expr Expr
-  | -- | Division of two expressions.
-    Div Expr Expr
-  | -- | Equality comparison between two expressions.
-    Eq Expr Expr
-  | -- | Inequality comparison between two expressions.
-    Neq Expr Expr
-  | -- | Greater-than comparison between two expressions.
-    Gt Expr Expr
-  | -- | Less-than comparison between two expressions.
-    Lt Expr Expr
-  | -- | A ternary conditional expression: condition ? expr1 : expr2.
-    Ternary Expr Expr Expr
-  | -- | A variable reference.
-    Var Symbol
-  | -- | A variable definition, associating a symbol with an expression.
-    Define String Expr
-  | -- | A variable assignment, changing the value of a symbol.
-    Assign String Expr
-  | -- | A lambda expression with a list of parameters and a body.
-    Lam [Symbol] Expr
-  | -- | Function application with an expression as the function and a list of arguments.
-    Apply Expr [Expr]
-  | -- | A sequence of expressions, where the last expression is the result.
-    Block [Expr]
-  | -- | A conditional expression: if (condition) {expr} elif (condition) {expr} else {expr}.
-    If Expr Expr [(Expr, Expr)] (Maybe Expr)
-  deriving
-    ( Show
-    , -- | Automatically deriving 'Show' and 'Eq' for displaying and comparing expressions.
-      Eq
-    )
+data BasicType
+  = U8
+  | U16
+  | U32
+  | U64
+  | I8
+  | I16
+  | I32
+  | I64
+  | F32
+  | F64
+  | Void
+  | Pointer Type
+  deriving (Show)
 
-{- | The 'Value' data type represents the result of evaluating an expression.
-A value can be a number, a boolean, a list, a closure (for functions), or
-a special value 'Null'.
--}
-data Value
-  = -- | A numerical value.
-    NumVal Int
-  | -- | A boolean value.
-    BoolVal Bool
-  | -- | A list of values.
-    ListVal [Value]
-  | -- | A closure, which is a function consisting of parameters, a body, and an environment.
-    Closure [Symbol] Expr Env
-  | -- | A special value representing an empty or undefined result.
-    Null
-  deriving
-    ( -- | Automatically deriving 'Eq' for comparing values.
-      Eq
-    )
-
-{- | The 'Show' instance for 'Value' provides a way to display values as strings.
-Numeric values are shown as numbers, boolean values are shown as '#t' (true)
-or '#f' (false), lists are displayed with their elements in parentheses, and
-closures are represented as "<procedure>".
--}
-instance Show Value where
-  show (NumVal n) = show n
-  show (BoolVal b) = if b then "true" else "false"
-  show (ListVal xs) = "(" ++ unwords (map show xs) ++ ")"
-  show (Closure{}) = "<procedure>"
-  show _ = ""
-
-{- | The 'Ord' instance for 'Value' defines an ordering for values. The only
-values that can be compared are 'NumVal' instances. Comparisons between
-non-numeric values result in an error.
--}
-instance Ord Value where
-  compare (NumVal n1) (NumVal n2) = compare n1 n2
-  compare _ _ = error "Cannot compare non-numeric values"
+data Node
+  = IntegerValue Int
+  | FloatValue Float
+  | ArrayValue [Node]
+  | VariableInitialization Node Type Node
+  | Assignment Node Node
+  | Block [Node]
+  | Return Node
+  | If Node Node (Maybe Node)
+  | While Node Node
+  | For (Maybe Node) Node (Maybe Node) Node
+  | FunctionDeclaration Type Node [(Type, Node)] Node
+  | FunctionCall Node [Node]
+  | EnumDeclaration Node [Node]
+  | StructDeclaration Node [(Type, Node)]
+  | StructInitialization Node [(Node, Node)]
+  | EnumElement Node Node
+  | StructElement Node Node
+  | CastToType Type Node
+  | CastToIdentifier Node Node
+  | LessThanOperator Node Node
+  | GreaterThanOperator Node Node
+  | LessThanOrEqualOperator Node Node
+  | GreaterThanOrEqualOperator Node Node
+  | EqualOperator Node Node
+  | NotEqualOperator Node Node
+  | AndOperator Node Node
+  | OrOperator Node Node
+  | NotOperator Node
+  | PlusOperator Node Node
+  | PlusEqualOperator Node Node
+  | MinusOperator Node Node
+  | MinusEqualOperator Node Node
+  | MultiplyOperator Node Node
+  | MultiplyEqualOperator Node Node
+  | DivideOperator Node Node
+  | DivideEqualOperator Node Node
+  | ModuloOperator Node Node
+  | SizeofOfExpressionOperator Node
+  | SizeofOfTypeOperator Type
+  | ReferenceOperator Node
+  | DereferenceOperator Node
+  | ArrayAccess Node Node
+  | Syscall [Node]
+  | Identifier String
+  deriving (Show)
