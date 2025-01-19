@@ -32,12 +32,12 @@ data BasicType
   deriving (Show)
 
 data Node
-  = IntegerValue Int
-  | FloatValue Float
-  | ArrayValue [Node]
+  = IntV Int
+  | FloatV Float
+  | ArrayV [Node]
   | Identifier Symbol
-  | VariableInitialization Symbol Type Node
-  | Assignment Symbol Node
+  | VarDef Symbol Type Node
+  | VarAssign Symbol Node
   | Block [Node]
   | Return Node
   | If Node Node (Maybe Node)
@@ -52,28 +52,28 @@ data Node
   | StructElement Node Node
   | CastToType Type Node
   | CastToIdentifier Node Node
-  | LessThanOperator Node Node
-  | GreaterThanOperator Node Node
-  | LessThanOrEqualOperator Node Node
-  | GreaterThanOrEqualOperator Node Node
-  | EqualOperator Node Node
-  | NotEqualOperator Node Node
-  | AndOperator Node Node
-  | OrOperator Node Node
-  | NotOperator Node
-  | PlusOperator Node Node
-  | PlusEqualOperator Symbol Node
-  | MinusOperator Node Node
-  | MinusEqualOperator Symbol Node
-  | MultiplyOperator Node Node
-  | MultiplyEqualOperator Symbol Node
-  | DivideOperator Node Node
-  | DivideEqualOperator Symbol Node
-  | ModuloOperator Node Node
-  | SizeofOfExpressionOperator Node
-  | SizeofOfTypeOperator Type
-  | ReferenceOperator Node
-  | DereferenceOperator Node
+  | LtOp Node Node
+  | GtOp Node Node
+  | LeqOp Node Node
+  | GeqOp Node Node
+  | EqOp Node Node
+  | NeqOp Node Node
+  | AndOp Node Node
+  | OrOp Node Node
+  | NotOp Node
+  | AddOp Node Node
+  | AddEqOp Symbol Node
+  | SubOp Node Node
+  | SubEqOp Symbol Node
+  | MulOp Node Node
+  | MulEqOp Symbol Node
+  | DivOp Node Node
+  | DivEqOp Symbol Node
+  | ModOp Node Node
+  | SizeofExpr Node
+  | SizeofType Type
+  | Reference Node
+  | Dereference Node
   | ArrayAccess Node Node
   | Syscall [Node]
   deriving (Show)

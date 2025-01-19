@@ -1,56 +1,10 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
-{-# HLINT ignore "Move brackets to avoid $" #-}
 module ASTParser (exprP) where
 
 import AST
 import Control.Applicative
 import Data.Char
 import Parser
-
-keywords :: [String]
-keywords =
-  [ "u8"
-  , "u16"
-  , "u32"
-  , "u64"
-  , "i8"
-  , "i16"
-  , "i32"
-  , "i64"
-  , "f32"
-  , "f64"
-  , "void"
-  , "mut"
-  , "ptr"
-  , "return"
-  , "not"
-  , "or"
-  , "and"
-  , "enum"
-  , "struct"
-  , "if"
-  , "else"
-  , "while"
-  , "for"
-  , "as"
-  , "sizeof"
-  , "syscall"
-  ]
-
--- Utility parsing
-
-symbolP :: Parser Symbol
-symbolP = do
-  id' <- ws *> spanP (\c -> isAlpha c || isDigit c || c == '_') <* ws
-  if null id' || id' `elem` keywords || head id' `elem` ('_' : ['0' .. '9'])
-    then empty
-    else pure id'
-
-wrapP :: Char -> Char -> Parser a -> Parser a
-wrapP c1 c2 p = charP c1 *> ws *> p <* ws <* charP c2
-
--- Main parsers
+import Parser.MiscParsers
 
 exprP :: Parser Node
 exprP = inlineP <|> exprP'
@@ -83,7 +37,45 @@ exprP' =
     <|> castToIdentifierP
     <|> identifierP
 
--- Type Parsing
+keywords :: [String]
+keywords =
+  [ "u8"
+  , "u16"
+  , "u32"
+  , "u64"
+  , "i8"
+  , "i16"
+  , "i32"
+  , "i64"
+  , "f32"
+  , "f64"
+  , "void"
+  , "mut"
+  , "ptr"
+  , "return"
+  , "not"
+  , "or"
+  , "and"
+  , "enum"
+  , "struct"
+  , "if"
+  , "else"
+  , "while"
+  , "for"
+  , "as"
+  , "sizeof"
+  , "syscall"
+  ]
+
+symbolP :: Parser Symbol
+symbolP = do
+  id' <- ws *> spanP (\c -> isAlpha c || isDigit c || c == '_') <* ws
+  if null id' || id' `elem` keywords || head id' `elem` ('_' : ['0' .. '9'])
+    then empty
+    else pure id'
+
+wrapP :: Char -> Char -> Parser a -> Parser a
+wrapP c1 c2 p = charP c1 *> ws *> p <* ws <* charP c2
 
 typeP :: Parser Type
 typeP = ptrTypeP <|> typeP'
@@ -133,16 +125,16 @@ floatValueP = do
     (dig, "") -> pure $ read dig
     ("", dec) -> pure $ read dec / (10 ^ length dec)
     (dig, dec) -> pure $ read dig + read dec / (10 ^ length dec)
-  return $ FloatValue $ maybeNegate absVal
+  return $ FloatV $ maybeNegate absVal
 
 integerValueP :: Parser Node
 integerValueP = do
   maybeNegate <- maybeNegateP
-  IntegerValue . maybeNegate . read <$> notNull (spanP isDigit)
+  IntV . maybeNegate . read <$> notNull (spanP isDigit)
 
 arrayValueP :: Parser Node
 arrayValueP =
-  ArrayValue <$> (wrapP '[' ']' $ sepBy (ws *> charP ',' <* ws) exprP)
+  ArrayV <$> (wrapP '[' ']' $ sepBy (ws *> charP ',' <* ws) exprP)
 
 -- Expression Parsing
 
@@ -156,7 +148,7 @@ variableInitializationP = do
   varType <- typeP
   name <- ws *> symbolP <* ws <* charP '='
   value <- ws *> exprP
-  return $ VariableInitialization name varType value
+  return $ VarDef name varType value
 
 blockP :: Parser Node
 blockP = Block <$> (wrapP '{' '}' $ sepBy ws exprP)
@@ -240,21 +232,21 @@ castToIdentifierP :: Parser Node
 castToIdentifierP = CastToIdentifier <$> wrapP '<' '>' identifierP <*> (ws *> exprP)
 
 notOperatorP :: Parser Node
-notOperatorP = NotOperator <$> (stringP "not" *> notNull ws *> exprP)
+notOperatorP = NotOp <$> (stringP "not" *> notNull ws *> exprP)
 
 sizeofP :: Parser Node
 sizeofP =
   (stringP "sizeof" *> charP '(' *> ws)
-    *> ( (SizeofOfTypeOperator <$> typeP)
-          <|> (SizeofOfExpressionOperator <$> exprP)
+    *> ( (SizeofType <$> typeP)
+          <|> (SizeofExpr <$> exprP)
        )
     <* (ws <* charP ')')
 
 referenceP :: Parser Node
-referenceP = ReferenceOperator <$> (charP '&' *> exprP)
+referenceP = Reference <$> (charP '&' *> exprP)
 
 dereferenceP :: Parser Node
-dereferenceP = ReferenceOperator <$> (charP '*' *> exprP)
+dereferenceP = Reference <$> (charP '*' *> exprP)
 
 arrayAccessP :: Parser Node
 arrayAccessP = ArrayAccess <$> (identifierP <|> arrayValueP) <*> wrapP '[' ']' exprP
@@ -285,17 +277,17 @@ assignmentP :: Parser Node
 assignmentP = do
   id' <- symbolP <* ws
   con <-
-    (PlusEqualOperator <$ stringP "+=")
-      <|> (MinusEqualOperator <$ stringP "-=")
-      <|> (MultiplyEqualOperator <$ stringP "*=")
-      <|> (DivideEqualOperator <$ stringP "/=")
-      <|> (Assignment <$ stringP "=")
+    (AddEqOp <$ stringP "+=")
+      <|> (SubEqOp <$ stringP "-=")
+      <|> (MulEqOp <$ stringP "*=")
+      <|> (DivEqOp <$ stringP "/=")
+      <|> (VarAssign <$ stringP "=")
   con id' <$> (ws *> exprP)
 
 logicalGateP :: Parser Node
 logicalGateP = do
   e1 <- inlineP' <* ws
-  con <- (AndOperator <$ stringP "and") <|> (OrOperator <$ stringP "or")
+  con <- (AndOp <$ stringP "and") <|> (OrOp <$ stringP "or")
   _ <- ws
   con e1 <$> exprP
 
@@ -303,25 +295,25 @@ booleanOpP :: Parser Node
 booleanOpP = do
   e1 <- inlineP'' <* ws
   con <-
-    (EqualOperator <$ stringP "==")
-      <|> (NotEqualOperator <$ stringP "!=")
-      <|> (GreaterThanOrEqualOperator <$ stringP ">=")
-      <|> (LessThanOrEqualOperator <$ stringP "<=")
-      <|> (GreaterThanOperator <$ charP '>')
-      <|> (LessThanOperator <$ charP '<')
+    (EqOp <$ stringP "==")
+      <|> (NeqOp <$ stringP "!=")
+      <|> (GeqOp <$ stringP ">=")
+      <|> (LeqOp <$ stringP "<=")
+      <|> (GtOp <$ charP '>')
+      <|> (LtOp <$ charP '<')
   con e1 <$> (ws *> inlineP')
 
 addSubP :: Parser Node
 addSubP = do
   e1 <- inlineP''' <* ws
-  con <- (PlusOperator <$ charP '+') <|> (MinusOperator <$ charP '-')
+  con <- (AddOp <$ charP '+') <|> (SubOp <$ charP '-')
   con e1 <$> (ws *> inlineP'')
 
 mulDivP :: Parser Node
 mulDivP = do
   e1 <- inlineP'''' <* ws
   con <-
-    (MultiplyOperator <$ charP '*')
-      <|> (DivideOperator <$ stringP "/")
-      <|> (ModuloOperator <$ stringP "%")
+    (MulOp <$ charP '*')
+      <|> (DivOp <$ stringP "/")
+      <|> (ModOp <$ stringP "%")
   con e1 <$> (ws *> inlineP''')
