@@ -1,20 +1,22 @@
-module AST
-  ( Node (..),
-    Type (..),
-    BasicType (..),
-    TypeSize,
-  )
-where
+module AST (
+  Node (..),
+  Type (..),
+  BasicType (..),
+  TypeSize,
+  Symbol,
+) where
 
 type TypeSize = Int
 
+type Symbol = String
+
 data Type = Type
-  { basic_type :: BasicType,
-    mutable :: Bool
+  { basic_type :: BasicType
+  , mutable :: Bool
   }
   deriving (Show)
 
-data BasicType
+data BasicType -- parsed
   = U8
   | U16
   | U32
@@ -30,16 +32,16 @@ data BasicType
   deriving (Show)
 
 data Node
-  = IntegerValue Int
-  | FloatValue Float
-  | ArrayValue [Node]
-  | VariableInitialization Node Type Node
-  | Assignment Node Node
-  | Block [Node]
-  | Return Node
-  | If Node Node (Maybe Node)
-  | While Node Node
-  | For (Maybe Node) Node (Maybe Node) Node
+  = IntegerValue Int -- parsed
+  | FloatValue Float -- parsed
+  | ArrayValue [Node] -- parsed
+  | VariableInitialization Symbol Type Node -- parsed
+  | Assignment Symbol Node -- parsed (inline)
+  | Block [Node] -- parsed?
+  | Return Node -- parsed
+  | If Node Node (Maybe Node) -- parsed
+  | While Node Node -- parsed
+  | For (Maybe Node) Node (Maybe Node) Node -- parsed
   | FunctionDeclaration Type Node [(Type, Node)] Node
   | FunctionCall Node [Node]
   | EnumDeclaration Node [Node]
@@ -59,13 +61,13 @@ data Node
   | OrOperator Node Node
   | NotOperator Node
   | PlusOperator Node Node
-  | PlusEqualOperator Node Node
+  | PlusEqualOperator Symbol Node
   | MinusOperator Node Node
-  | MinusEqualOperator Node Node
+  | MinusEqualOperator Symbol Node
   | MultiplyOperator Node Node
-  | MultiplyEqualOperator Node Node
+  | MultiplyEqualOperator Symbol Node
   | DivideOperator Node Node
-  | DivideEqualOperator Node Node
+  | DivideEqualOperator Symbol Node
   | ModuloOperator Node Node
   | SizeofOfExpressionOperator Node
   | SizeofOfTypeOperator Type
