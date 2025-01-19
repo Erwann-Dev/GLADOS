@@ -16,7 +16,7 @@ data Type = Type
   }
   deriving (Show)
 
-data BasicType -- parsed
+data BasicType
   = U8
   | U16
   | U32
@@ -32,20 +32,21 @@ data BasicType -- parsed
   deriving (Show)
 
 data Node
-  = IntegerValue Int -- parsed
-  | FloatValue Float -- parsed
-  | ArrayValue [Node] -- parsed
-  | VariableInitialization Symbol Type Node -- parsed
-  | Assignment Symbol Node -- parsed (inline)
-  | Block [Node] -- parsed?
-  | Return Node -- parsed
-  | If Node Node (Maybe Node) -- parsed
-  | While Node Node -- parsed
-  | For (Maybe Node) Node (Maybe Node) Node -- parsed
-  | Function Type [(Type, Symbol)] Node
+  = IntegerValue Int
+  | FloatValue Float
+  | ArrayValue [Node]
+  | Identifier Symbol
+  | VariableInitialization Symbol Type Node
+  | Assignment Symbol Node
+  | Block [Node]
+  | Return Node
+  | If Node Node (Maybe Node)
+  | While Node Node
+  | For (Maybe Node) Node (Maybe Node) Node
+  | FunctionDeclaration Type Symbol [(Type, Symbol)] Node
   | FunctionCall Node [Node]
-  | EnumDeclaration Node [Node]
-  | StructDeclaration Node [(Type, Node)]
+  | EnumDeclaration Symbol [Node]
+  | StructDeclaration Symbol [(Type, Symbol)]
   | StructInitialization Node [(Node, Node)]
   | EnumElement Node Node
   | StructElement Node Node
@@ -75,5 +76,4 @@ data Node
   | DereferenceOperator Node
   | ArrayAccess Node Node
   | Syscall [Node]
-  | Identifier String
   deriving (Show)

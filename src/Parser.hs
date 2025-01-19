@@ -14,7 +14,7 @@ module Parser
 
     -- * Combinators
     sepBy,
-    optional,
+    optionalP,
 
     -- * Advanced Parsers
     lookAhead,
@@ -83,16 +83,16 @@ charP x = Parser f
       | otherwise = Nothing
     f [] = Nothing
 
--- | 'optional' allows a parser to succeed even if the input does not match.
+-- | 'optionalP' allows a parser to succeed even if the input does not match.
 -- If the parser fails, it returns the input string as is.
 -- If the parser succeeds, it returns the remaining input along with the parsed value.
 --
 -- @
--- optional (charP \'a\') "abc" == Just ("bc", Just \'a\')
--- optional (charP \'b\') "abc" == Just ("abc", Nothing)
+-- optionalP (charP \'a\') "abc" == Just ("bc", Just \'a\')
+-- optionalP (charP \'b\') "abc" == Just ("abc", Nothing)
 -- @
-optional :: Parser a -> Parser (Maybe a)
-optional p = Just <$> p <|> pure Nothing
+optionalP :: Parser a -> Parser (Maybe a)
+optionalP p = Just <$> p <|> pure Nothing
 
 -- | 'stringP' parses a string of characters. It returns the matched string if all
 -- characters match sequentially.

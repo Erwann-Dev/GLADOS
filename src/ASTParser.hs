@@ -1,329 +1,263 @@
-module ASTParser (expressionP) where
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Move brackets to avoid $" #-}
+module ASTParser (exprP) where
 
 import AST
-import Control.Applicative (Alternative (empty, many), (<|>))
-import Data.Char (isDigit, isSpace)
+import Control.Applicative
+import Data.Char
 import Parser
 
 keywords :: [String]
 keywords =
-  [ "u8",
-    "u16",
-    "u32",
-    "u64",
-    "i8",
-    "i16",
-    "i32",
-    "i64",
-    "f32",
-    "f64",
-    "void",
-    "mut",
-    "ptr",
-    "return",
-    "not",
-    "or",
-    "and",
-    "enum",
-    "struct",
-    "if",
-    "else",
-    "while",
-    "for",
-    "as",
-    "sizeof",
-    "syscall"
+  [ "u8"
+  , "u16"
+  , "u32"
+  , "u64"
+  , "i8"
+  , "i16"
+  , "i32"
+  , "i64"
+  , "f32"
+  , "f64"
+  , "void"
+  , "mut"
+  , "ptr"
+  , "return"
+  , "not"
+  , "or"
+  , "and"
+  , "enum"
+  , "struct"
+  , "if"
+  , "else"
+  , "while"
+  , "for"
+  , "as"
+  , "sizeof"
+  , "syscall"
   ]
 
-parseType' :: Bool -> Parser Type
-parseType' isMutable =
-  typeParser "u8" U8 isMutable
-    <|> typeParser "u16" U16 isMutable
-    <|> typeParser "u32" U32 isMutable
-    <|> typeParser "u64" U64 isMutable
-    <|> typeParser "i8" I8 isMutable
-    <|> typeParser "i16" I16 isMutable
-    <|> typeParser "i32" I32 isMutable
-    <|> typeParser "i64" I64 isMutable
-    <|> typeParser "f32" F32 isMutable
-    <|> typeParser "f64" F64 isMutable
-    <|> typeParser "void" Void isMutable
-  where
-    typeParser :: String -> BasicType -> Bool -> Parser Type
-    typeParser str basicType isMutable' = do
-      _ <- ws <* stringP str <* ws
-      return $
-        Type
-          { basic_type = basicType,
-            mutable = isMutable'
-          }
+-- Utility parsing
 
-immutableTypeP' :: Parser Type
-immutableTypeP' = parseType' False
+symbolP :: Parser Symbol
+symbolP = do
+  id' <- ws *> spanP (\c -> isAlpha c || isDigit c || c == '_') <* ws
+  if null id' || id' `elem` keywords || head id' `elem` ('_' : ['0' .. '9'])
+    then empty
+    else pure id'
 
-mutableTypeP' :: Parser Type
-mutableTypeP' = ws *> stringP "mut" *> ws *> parseType' True
+wrapP :: Char -> Char -> Parser a -> Parser a
+wrapP c1 c2 p = charP c1 *> ws *> p <* ws <* charP c2
 
-ptrTypeP' :: Parser Type
-ptrTypeP' = mutablePtrTypeP <|> immutablePtrTypeP
-  where
-    mutablePtrTypeP = do
-      inner_type <- ws *> stringP "ptr" *> ws *> charP '?' *> ws *> typeP'
-      return $
-        Type
-          { basic_type = Pointer inner_type,
-            mutable = True
-          }
-    immutablePtrTypeP = do
-      inner_type <- ws *> stringP "ptr" *> ws *> typeP'
-      return $
-        Type
-          { basic_type = Pointer inner_type,
-            mutable = False
-          }
+-- Main parsers
+
+exprP :: Parser Node
+exprP = inlineP <|> exprP'
+
+exprP' :: Parser Node
+exprP' =
+  integerValueP
+    <|> floatValueP
+    <|> arrayAccessP
+    <|> arrayValueP
+    <|> variableInitializationP
+    <|> blockP
+    <|> returnP
+    <|> ifP
+    <|> whileP
+    <|> forP
+    <|> syscallP
+    <|> notOperatorP
+    <|> sizeofP
+    <|> referenceP
+    <|> dereferenceP
+    <|> enumDeclarationP
+    <|> structDeclarationP
+    <|> functionDeclarationP
+    <|> functionCallP
+    <|> structInitializationP
+    <|> enumElementP
+    <|> structElementP
+    <|> castToTypeP
+    <|> castToIdentifierP
+    <|> identifierP
+
+-- Type Parsing
+
+typeP :: Parser Type
+typeP = ptrTypeP <|> typeP'
+
+basicTypeP :: Parser BasicType
+basicTypeP =
+  (U8 <$ stringP "u8")
+    <|> (U16 <$ stringP "u16")
+    <|> (U32 <$ stringP "u32")
+    <|> (U64 <$ stringP "u64")
+    <|> (I8 <$ stringP "i8")
+    <|> (I16 <$ stringP "i16")
+    <|> (I32 <$ stringP "i32")
+    <|> (I64 <$ stringP "i64")
+    <|> (F32 <$ stringP "f32")
+    <|> (F64 <$ stringP "f64")
+    <|> (Void <$ stringP "void")
 
 typeP' :: Parser Type
-typeP' = ptrTypeP' <|> mutableTypeP' <|> immutableTypeP'
+typeP' =
+  flip Type
+    <$> ((True <$ stringP "mut" <* notNull ws) <|> pure False)
+    <*> basicTypeP
 
-floatValueP' :: Parser Node
-floatValueP' = do
-  signs <- ws *> spanP (\c -> c == '+' || c == '-' || isSpace c)
-  digits <- ws *> spanP isDigit <* ws <* charP '.'
-  decimalDigits <- ws *> spanP isDigit <* ws
-  if null digits && null decimalDigits
-    then empty
-    else
-      let finalSign = if even $ length $ filter (== '-') signs then 1 else -1
-          wholeNum = if null digits then "0" else digits
-          decimals = if null decimalDigits then "0" else decimalDigits
-          val = finalSign * (read wholeNum + read decimals / (10 ^ length decimals))
-       in return $ FloatValue val
+ptrTypeP :: Parser Type
+ptrTypeP =
+  flip Type
+    <$> (stringP "ptr" *> (True <$ charP '?' <|> pure False))
+    <*> (Pointer <$> (notNull ws *> typeP))
 
-integerValueP' :: Parser Node
-integerValueP' = do
-  signs <- ws *> spanP (\c -> c == '+' || c == '-' || isSpace c)
-  digits <- ws *> spanP isDigit <* ws
-  if null digits
-    then empty
-    else
-      let finalSign = if even $ length $ filter (== '-') signs then 1 else -1
-       in return $ IntegerValue $ finalSign * read digits
+-- Algebraic value parsing
 
-sizeOfTypeP' :: Parser Node
-sizeOfTypeP' = do
-  t <- ws *> stringP "sizeof" *> ws *> optional (charP '(' *> ws) *> typeP' <* optional (ws <* charP ')') <* ws
-  return $ SizeofOfTypeOperator t
+maybeNegateP :: (Num a) => Parser (a -> a)
+maybeNegateP = do
+  signs <- spanP $ \c -> c == '+' || c == '-'
+  pure $
+    if even $ (length . filter (== '-')) signs
+      then id
+      else negate
 
-sizeOfExpressionP' :: Parser Node
-sizeOfExpressionP' = do
-  e <- ws *> stringP "sizeof" *> ws *> optional (charP '(' *> ws) *> expressionP <* optional (ws <* charP ')') <* ws
-  return $ SizeofOfExpressionOperator e
+floatValueP :: Parser Node
+floatValueP = do
+  maybeNegate <- maybeNegateP
+  separated <- (,) <$> spanP isDigit <* optionalP (charP '.') <*> spanP isDigit
+  absVal <- case separated of
+    ("", "") -> empty
+    (dig, "") -> pure $ read dig
+    ("", dec) -> pure $ read dec / (10 ^ length dec)
+    (dig, dec) -> pure $ read dig + read dec / (10 ^ length dec)
+  return $ FloatValue $ maybeNegate absVal
+
+integerValueP :: Parser Node
+integerValueP = do
+  maybeNegate <- maybeNegateP
+  IntegerValue . maybeNegate . read <$> notNull (spanP isDigit)
+
+arrayValueP :: Parser Node
+arrayValueP =
+  ArrayValue <$> (wrapP '[' ']' $ sepBy (ws *> charP ',' <* ws) exprP)
+
+-- Expression Parsing
 
 identifierP :: Parser Node
 identifierP = do
-  id' <- ws *> spanP (\c -> c `elem` ['a' .. 'z'] || c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] || c == '_') <* ws
-  if null id' || id' `elem` keywords || head id' `elem` ('_' : ['0' .. '9'])
-    then empty
-    else return $ Identifier id'
-
-numericalValueP :: Parser Node
-numericalValueP = floatValueP' <|> integerValueP'
-
-arrayValueP :: Parser Node
-arrayValueP = do
-  values <- ws *> charP '[' *> sepBy (charP ',') expressionP <* charP ']' <* ws
-  return $ ArrayValue values
+  str <- symbolP
+  if str `elem` keywords then empty else return $ Identifier str
 
 variableInitializationP :: Parser Node
 variableInitializationP = do
-  type' <- ws *> typeP'
-  id' <- ws *> identifierP <* ws <* charP '='
-  value <- ws *> expressionP
-  return $ VariableInitialization id' type' value
-
-enumDeclarationP :: Parser Node
-enumDeclarationP = do
-  id' <- ws *> stringP "enum" *> ws *> identifierP <* ws <* charP '{'
-  variants <- sepBy (charP ',') identifierP <* charP '}' <* ws
-  return $ EnumDeclaration id' variants
-
-structDeclarationP :: Parser Node
-structDeclarationP = do
-  id' <- ws *> stringP "struct" *> ws *> identifierP <* ws <* charP '{'
-  fields <- sepBy (charP ',') structFieldP <* ws <* charP '}' <* ws
-  return $ StructDeclaration id' fields
-  where
-    structFieldP = do
-      t <- typeP'
-      id' <- ws *> identifierP
-      return (t, id')
-
-enumElementP :: Parser Node
-enumElementP = do
-  enumId <- ws *> identifierP
-  variant <- ws *> charP ':' *> ws *> charP ':' *> ws *> identifierP
-  return $ EnumElement enumId variant
-
-sizeOfP :: Parser Node
-sizeOfP = sizeOfTypeP' <|> sizeOfExpressionP'
-
-referenceP :: Parser Node
-referenceP = do
-  element <- ws *> charP '&' *> ws *> expressionP
-  return $ ReferenceOperator element
+  varType <- typeP
+  name <- ws *> symbolP <* ws <* charP '='
+  value <- ws *> exprP
+  return $ VariableInitialization name varType value
 
 blockP :: Parser Node
-blockP = do
-  expressions <- ws *> charP '{' *> many expressionP <* charP '}' <* ws
-  return $ Block expressions
+blockP = Block <$> (wrapP '{' '}' $ sepBy ws exprP)
 
 returnP :: Parser Node
-returnP = do
-  _ <- ws *> stringP "return"
-  value <- ws *> expressionP
-  return $ Return value
+returnP = Return <$> (stringP "return" *> notNull ws *> exprP)
 
 ifP :: Parser Node
 ifP = do
-  condition <- ws *> stringP "if" *> ws *> optional (charP '(' *> ws) *> expressionP <* optional (ws <* charP ')')
-  thenBranch <- ws *> expressionP
-  elseBranch <- optional (ws *> stringP "else" *> ws *> expressionP)
+  _ <- stringP "if"
+  condition <- wrapP '(' ')' exprP <|> (notNull ws *> exprP <* notNull ws)
+  thenBranch <- ws *> exprP
+  elseBranch <- optionalP $ notNull ws *> stringP "else" *> notNull ws *> exprP
   return $ If condition thenBranch elseBranch
 
 whileP :: Parser Node
 whileP = do
-  condition <- ws *> stringP "while" *> ws *> optional (charP '(' *> ws) *> expressionP <* optional (ws <* charP ')')
-  body <- ws *> expressionP
+  _ <- stringP "while"
+  condition <- wrapP '(' ')' exprP <|> (notNull ws *> exprP <* notNull ws)
+  body <- ws *> exprP
   return $ While condition body
 
 forP :: Parser Node
 forP = do
-  initialization <- ws *> stringP "for" *> ws *> charP '(' *> ws *> optional expressionP <* ws <* charP ','
-  condition <- ws *> expressionP <* ws <* charP ','
-  increment <- ws *> optional expressionP <* ws <* charP ')'
-  body <- ws *> expressionP
+  _ <- stringP "for" <* ws <* charP '('
+  initialization <- ws *> optionalP exprP <* ws <* charP ';'
+  condition <- ws *> exprP <* ws <* charP ';'
+  increment <- ws *> optionalP exprP <* ws <* charP ')'
+  body <- ws *> exprP
   return $ For initialization condition increment body
 
 -- u8 addu8 (u8 a , u8 b ) a + b
 functionDeclarationP :: Parser Node
 functionDeclarationP = do
-  returnType <- ws *> typeP'
-  name <- ws *> identifierP <* ws <* charP '('
-  parameters <- ws *> sepBy (charP ',') parameterP <* ws <* charP ')'
-  body <- ws *> expressionP
+  returnType <- typeP
+  name <- notNull ws *> symbolP <* ws <* charP '(' <* ws
+  parameters <- sepBy (ws *> charP ',' <* ws) parameterP <* ws <* charP ')'
+  body <- ws *> exprP
   return $ FunctionDeclaration returnType name parameters body
-  where
-    parameterP = do
-      t <- typeP'
-      id' <- ws *> identifierP
-      return (t, id')
+ where
+  parameterP = (,) <$> typeP <*> (notNull ws *> symbolP)
 
 functionCallP :: Parser Node
-functionCallP = do
-  name <- ws *> identifierP <* ws <* charP '('
-  arguments <- ws *> sepBy (charP ',') expressionP <* ws <* charP ')' <* ws
-  return $ FunctionCall name arguments
+functionCallP =
+  FunctionCall
+    <$> (identifierP <* ws)
+    <*> wrapP '(' ')' (sepBy (ws *> charP ',' <* ws) exprP)
+
+enumDeclarationP :: Parser Node
+enumDeclarationP =
+  EnumDeclaration
+    <$> (stringP "enum" *> notNull ws *> symbolP <* ws)
+    <*> wrapP '{' '}' (sepBy (ws *> charP ',' <* ws) identifierP)
+
+structDeclarationP :: Parser Node
+structDeclarationP =
+  StructDeclaration
+    <$> (stringP "struct" *> notNull ws *> symbolP <* ws)
+    <*> (wrapP '{' '}' $ sepBy (charP ',') structFieldP)
+ where
+  structFieldP = (,) <$> typeP <*> (notNull ws *> symbolP)
 
 structInitializationP :: Parser Node
 structInitializationP = do
-  structName <- ws *> identifierP <* ws <* charP '{'
-  fields <- sepBy (charP ',') structFieldP <* ws <* charP '}' <* ws
-  return $ StructInitialization structName fields
-  where
-    structFieldP = do
-      id' <- identifierP <* ws <* charP ':'
-      value <- ws *> expressionP
-      return (id', value)
+  name <- ws *> identifierP <* ws
+  fields <- wrapP '{' '}' $ sepBy (ws *> charP ',' <* ws) structFieldP
+  return $ StructInitialization name fields
+ where
+  structFieldP = (,) <$> identifierP <* ws <* charP ':' <* ws <*> exprP
 
-castToTypeP :: Parser Node
-castToTypeP = do
-  expr <- lookAhead $ manyTill (satisfyP (const True)) (stringP "as")
-  _ <- stringP expr
-  types <- many (ws *> stringP "as" *> ws *> typeP')
-  if null types
-    then empty
-    else do
-      case runParser expressionP expr of
-        Just ("", e) -> return $ foldr CastToType e types
-        _ -> empty
-
-castToIdentifierP :: Parser Node
-castToIdentifierP = do
-  expr <- lookAhead $ manyTill (satisfyP (const True)) (stringP "as")
-  _ <- stringP expr
-  id' <- ws *> identifierP
-  case runParser expressionP expr of
-    Just ("", e) -> return $ CastToIdentifier e id'
-    _ -> empty
-
-andOperatorP :: Parser Node
-andOperatorP = do
-  firstExpr <- manyTill (satisfyP (const True)) (stringP "and")
-  case runParser expressionP firstExpr of
-    Just ("", e) -> do
-      AndOperator e <$> expressionP
-    _ -> empty
-
-orOperatorP :: Parser Node
-orOperatorP = do
-  firstExpr <- manyTill (satisfyP (const True)) (stringP "or")
-  case runParser expressionP firstExpr of
-    Just ("", e) -> do
-      OrOperator e <$> expressionP
-    _ -> empty
+enumElementP :: Parser Node
+enumElementP = EnumElement <$> identifierP <* charP ':' <*> identifierP
 
 structElementP :: Parser Node
-structElementP = do
-  left <- manyTill (satisfyP (const True)) (charP '.')
-  case runParser expressionP left of
-    Just ("", l) -> do
-      right <- ws *> expressionP
-      return $ StructElement l right
-    _ -> empty
+structElementP = StructElement <$> identifierP <*> (charP '.' *> exprP)
+
+castToTypeP :: Parser Node
+castToTypeP = CastToType <$> wrapP '<' '>' typeP <*> (ws *> exprP)
+
+castToIdentifierP :: Parser Node
+castToIdentifierP = CastToIdentifier <$> wrapP '<' '>' identifierP <*> (ws *> exprP)
 
 notOperatorP :: Parser Node
-notOperatorP = NotOperator <$> (ws *> stringP "not" *> ws *> expressionP)
+notOperatorP = NotOperator <$> (stringP "not" *> notNull ws *> exprP)
 
-precedentArithmeticOperatorP' :: Parser Node
-precedentArithmeticOperatorP' = do
-  left <- lookAhead $ manyTill (satisfyP (const True)) (charP '*' <|> charP '/' <|> charP '%')
-  operator <- stringP left *> (charP '*' <|> charP '/' <|> charP '%')
-  right <- ws *> expressionP
-  case runParser expressionP left of
-    Just ("", left') -> case operator of
-      '*' -> return $ MultiplyOperator left' right
-      '/' -> return $ DivideOperator left' right
-      '%' -> return $ ModuloOperator left' right
-      _ -> empty
-    _ -> empty
+sizeofP :: Parser Node
+sizeofP =
+  (stringP "sizeof" *> charP '(' *> ws)
+    *> ( (SizeofOfTypeOperator <$> typeP)
+          <|> (SizeofOfExpressionOperator <$> exprP)
+       )
+    <* (ws <* charP ')')
 
-nonPrecedentArithmeticOperatorP' :: Parser Node
-nonPrecedentArithmeticOperatorP' = do
-  left <- lookAhead $ manyTill (satisfyP (const True)) (charP '+' <|> charP '-')
-  operator <- stringP left *> (charP '+' <|> charP '-')
-  right <- ws *> expressionP
-  case runParser expressionP left of
-    Just ("", left') -> case operator of
-      '+' -> return $ PlusOperator left' right
-      '-' -> return $ MinusOperator left' right
-      _ -> empty
-    _ -> empty
-
-arithmeticOperatorP :: Parser Node
-arithmeticOperatorP = precedentArithmeticOperatorP' <|> nonPrecedentArithmeticOperatorP'
+referenceP :: Parser Node
+referenceP = ReferenceOperator <$> (charP '&' *> exprP)
 
 dereferenceP :: Parser Node
-dereferenceP = do
-  e <- ws *> charP '*' *> ws *> expressionP
-  return $ DereferenceOperator e
+dereferenceP = ReferenceOperator <$> (charP '*' *> exprP)
 
 arrayAccessP :: Parser Node
-arrayAccessP = do
-  before <- manyTill (satisfyP (const True)) (charP '[')
-  inside <- expressionP <* ws <* charP ']' <* ws
-  case runParser expressionP before of
-    Just ("", e) -> return $ ArrayAccess e inside
-    _ -> empty
+arrayAccessP = ArrayAccess <$> (identifierP <|> arrayValueP) <*> wrapP '[' ']' exprP
 
 syscallP :: Parser Node
 syscallP = do
@@ -332,79 +266,62 @@ syscallP = do
     FunctionCall (Identifier "syscall") args -> return $ Syscall args
     _ -> empty
 
-assignmentOperatorsP :: Parser Node
-assignmentOperatorsP = do
-  left <- lookAhead $ manyTill (satisfyP (const True)) (charP '=' <|> (charP '+' <* ws <* charP '=') <|> (charP '-' <* ws <* charP '=') <|> (charP '*' <* ws <* charP '=') <|> (charP '/' <* ws <* charP '='))
-  _ <- stringP left
-  case runParser expressionP left of
-    Just ("", l) -> do
-      operator <- charP '=' <|> (charP '+' <* ws <* charP '=') <|> (charP '-' <* ws <* charP '=') <|> (charP '*' <* ws <* charP '=') <|> (charP '/' <* ws <* charP '=')
-      right <- expressionP
-      case operator of
-        '=' -> return $ Assignment l right
-        '+' -> return $ PlusEqualOperator l right
-        '-' -> return $ MinusEqualOperator l right
-        '*' -> return $ MultiplyEqualOperator l right
-        '/' -> return $ DivideEqualOperator l right
-        _ -> empty
-    _ -> empty
+inlineP :: Parser Node
+inlineP = assignmentP <|> logicalGateP <|> inlineP'
 
-comparaisonOperatorP :: Parser Node
-comparaisonOperatorP = do
-  left <- lookAhead $ manyTill (satisfyP (const True)) (charP '=' <|> charP '!' <|> charP '<' <|> charP '>')
-  _ <- stringP left
-  case runParser expressionP left of
-    Just ("", l) -> do
-      operatorChar0 <- charP '=' <|> charP '!' <|> charP '<' <|> charP '>'
-      operatorChar1 <- ws *> optional (charP '=')
-      case (operatorChar0, operatorChar1) of
-        ('=', Just '=') -> EqualOperator l <$> expressionP
-        ('!', Just '=') -> NotEqualOperator l <$> expressionP
-        ('<', Just '=') -> LessThanOrEqualOperator l <$> expressionP
-        ('>', Just '=') -> GreaterThanOrEqualOperator l <$> expressionP
-        ('<', Nothing) -> LessThanOperator l <$> expressionP
-        ('>', Nothing) -> GreaterThanOperator l <$> expressionP
-        _ -> empty
-    _ -> empty
+inlineP' :: Parser Node
+inlineP' = booleanOpP <|> inlineP''
 
-parenthesesP :: Parser Node
-parenthesesP = ws *> charP '(' *> ws *> expressionP <* ws <* charP ')' <* ws
+inlineP'' :: Parser Node -- Inline expressions except for boolean operations
+inlineP'' = addSubP <|> inlineP'''
 
-leftRecursiveParsers :: Parser Node
-leftRecursiveParsers =
-  assignmentOperatorsP
-    <|> comparaisonOperatorP
-    <|> orOperatorP
-    <|> andOperatorP
-    <|> arithmeticOperatorP
-    <|> castToTypeP
-    <|> castToIdentifierP
-    <|> structElementP
-    <|> arrayAccessP
+inlineP''' :: Parser Node -- Inline expressions except for boolean and arithmetic operations
+inlineP''' = mulDivP <|> inlineP''''
 
-nonLeftRecursiveParsers :: Parser Node
-nonLeftRecursiveParsers =
-  enumElementP
-    <|> structInitializationP
-    <|> syscallP
-    <|> functionCallP
-    <|> variableInitializationP
-    <|> functionDeclarationP
-    <|> parenthesesP
-    <|> arrayValueP
-    <|> dereferenceP
-    <|> referenceP
-    <|> notOperatorP
-    <|> sizeOfP
-    <|> returnP
-    <|> ifP
-    <|> forP
-    <|> whileP
-    <|> enumDeclarationP
-    <|> structDeclarationP
-    <|> blockP
-    <|> identifierP
-    <|> numericalValueP
+inlineP'''' :: Parser Node -- Inline expressions except for boolean, arithmetic, and multiplication/division operations
+inlineP'''' = charP '(' *> ws *> exprP <* ws <* charP ')' <|> exprP'
 
-expressionP :: Parser Node
-expressionP = leftRecursiveParsers <|> nonLeftRecursiveParsers
+assignmentP :: Parser Node
+assignmentP = do
+  id' <- symbolP <* ws
+  con <-
+    (PlusEqualOperator <$ stringP "+=")
+      <|> (MinusEqualOperator <$ stringP "-=")
+      <|> (MultiplyEqualOperator <$ stringP "*=")
+      <|> (DivideEqualOperator <$ stringP "/=")
+      <|> (Assignment <$ stringP "=")
+  con id' <$> (ws *> exprP)
+
+logicalGateP :: Parser Node
+logicalGateP = do
+  e1 <- inlineP' <* ws
+  con <- (AndOperator <$ stringP "and") <|> (OrOperator <$ stringP "or")
+  _ <- ws
+  con e1 <$> exprP
+
+booleanOpP :: Parser Node
+booleanOpP = do
+  e1 <- inlineP'' <* ws
+  con <-
+    (EqualOperator <$ stringP "==")
+      <|> (NotEqualOperator <$ stringP "!=")
+      <|> (GreaterThanOrEqualOperator <$ stringP ">=")
+      <|> (LessThanOrEqualOperator <$ stringP "<=")
+      <|> (GreaterThanOperator <$ charP '>')
+      <|> (LessThanOperator <$ charP '<')
+  con e1 <$> (ws *> inlineP')
+
+addSubP :: Parser Node
+addSubP = do
+  e1 <- inlineP''' <* ws
+  con <- (PlusOperator <$ charP '+') <|> (MinusOperator <$ charP '-')
+  con e1 <$> (ws *> inlineP'')
+
+mulDivP :: Parser Node
+mulDivP = do
+  e1 <- inlineP'''' <* ws
+  con <-
+    (MultiplyOperator <$ charP '*')
+      <|> (DivideOperator <$ stringP "/")
+      <|> (ModuloOperator <$ stringP "%")
+  con e1 <$> (ws *> inlineP''')

@@ -3,7 +3,7 @@ module Main (main) where
 -- import Preprocessor (runPreprocessor)
 import Utils (tryReadFile)
 import Preprocessor (runPreprocessor)
-import ASTParser (expressionP)
+import ASTParser (exprP)
 import System.Environment (getArgs)
 import System.Exit (exitWith, ExitCode(ExitFailure))
 import Parser (Parser(runParser))
@@ -85,7 +85,7 @@ main = do
         Nothing -> do
             putStrLn "preprocessorError: invalid syntax"
             exitWith (ExitFailure 84)
-        Just result -> case runParser expressionP result of
+        Just result -> case runParser exprP result of
             Nothing -> do
                 putStrLn "parseError: invalid syntax"
                 exitWith (ExitFailure 84)
