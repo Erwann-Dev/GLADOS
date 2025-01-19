@@ -42,7 +42,7 @@ data Node
   | If Node Node (Maybe Node) -- parsed
   | While Node Node -- parsed
   | For (Maybe Node) Node (Maybe Node) Node -- parsed
-  | FunctionDeclaration Type Node [(Type, Node)] Node
+  | Function Type [(Type, Symbol)] Node
   | FunctionCall Node [Node]
   | EnumDeclaration Node [Node]
   | StructDeclaration Node [(Type, Node)]
