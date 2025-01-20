@@ -1,28 +1,31 @@
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module ASTEval (
-  eval,
-  Value (..),
-  Env,
-  State (..),
-  initialState,
-  InterpreterState (..),
-)
+module ASTEval
+  ( eval,
+    Value (..),
+    Env,
+    State (..),
+    initialState,
+    InterpreterState (..),
+  )
 where
 
 import AST
 import Control.Applicative
 import Control.Monad
+import Foreign.Marshal
+import Foreign.Ptr
+import Foreign.Storable
 
 newtype State s a = State {runState :: s -> Either String (a, s)}
 
 instance Functor (State m) where
   fmap f (State runstate) = State fun
-   where
-    fun state = do
-      (returned, newState) <- runstate state
-      return (f returned, newState)
+    where
+      fun state = do
+        (returned, newState) <- runstate state
+        return (f returned, newState)
 
 instance Applicative (State m) where
   pure value = State $ \state -> Right (value, state)
@@ -53,7 +56,7 @@ getEnvs = envStack <$> get
 setEnvs :: [Env] -> State InterpreterState ()
 setEnvs envs = do
   state <- get
-  set state{envStack = envs}
+  set state {envStack = envs}
 
 insertInEnv :: Symbol -> Value -> Bool -> [Env] -> [Env]
 insertInEnv str val isMut [] = [[(str, (val, isMut))]]
@@ -64,25 +67,41 @@ insertInEnv str val isMut (env : envs) = case lookup str env of
 addToPrintBuffer :: Value -> State InterpreterState ()
 addToPrintBuffer val = do
   state <- get
-  set state{printBuffer = printBuffer state ++ [val]}
+  set state {printBuffer = printBuffer state ++ [val]}
+
+mallocedInt :: String -> Int -> IO (State InterpreterState Value)
+mallocedInt identifier nb = do
+  intPtr <- malloc
+  poke intPtr nb
+  return $ State $ \state -> Right (PtrNumVal intPtr, state {intPointers = (identifier, intPtr) : intPointers state})
+
+mallocedFloat :: String -> Float -> IO (State InterpreterState Value)
+mallocedFloat identifier nb = do
+  floatPtr <- malloc
+  poke floatPtr nb
+  return $ State $ \state -> Right (PtrFloatVal floatPtr, state {floatPointers = (identifier, floatPtr) : floatPointers state})
 
 type Env = [(Symbol, (Value, Bool))]
 
 data InterpreterState = InterpreterState
-  { envStack :: [Env] -- Stack of environments
-  , printBuffer :: [Value] -- Buffer of values to print
+  { envStack :: [Env], -- Stack of environments
+    printBuffer :: [Value], -- Buffer of values to print
+    intPointers :: [(Symbol, Ptr Int)], -- Pointers to integer values
+    floatPointers :: [(Symbol, Ptr Float)] -- Pointers to float values
   }
 
 initialState :: InterpreterState
 initialState =
   InterpreterState
-    { envStack = [[]]
-    , printBuffer = []
+    { envStack = [[]],
+      printBuffer = []
     }
 
 data Value
   = NumVal Int
   | FloatVal Float
+  | PtrNumVal (Ptr Int)
+  | PtrFloatVal (Ptr Float)
   | ListVal [Value]
   | Closure [(Type, Symbol)] Node Env
   | Null
@@ -254,8 +273,8 @@ eval (For base cond inc body) env = do
       | i /= 0 ->
           eval body env
             >> ( case inc of
-                  Nothing -> return Null
-                  (Just e) -> eval e env
+                   Nothing -> return Null
+                   (Just e) -> eval e env
                )
             >> eval (For Nothing cond inc body) env
     NumVal 0 -> return Null
@@ -295,6 +314,6 @@ apply :: Value -> [Value] -> State InterpreterState Value
 apply (Closure ids e env) xs
   | length ids == length xs = eval e (linkedParams ++ env)
   | otherwise = fail "Arguments mismatch"
- where
-  linkedParams = [(sym, (val, isMut)) | ((Type _ isMut, sym), val) <- zip ids xs]
+  where
+    linkedParams = [(sym, (val, isMut)) | ((Type _ isMut, sym), val) <- zip ids xs]
 apply _ _ = fail "Expected closure"
