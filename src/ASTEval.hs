@@ -1,13 +1,14 @@
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module ASTEval
-  ( eval,
-    Value (..),
-    Env,
-    State (..),
-    initialState,
-    InterpreterState (..),
-  )
+module ASTEval (
+  eval,
+  Value (..),
+  Env,
+  State (..),
+  initialState,
+  InterpreterState (..),
+)
 where
 
 import AST
@@ -18,10 +19,10 @@ newtype State s a = State {runState :: s -> Either String (a, s)}
 
 instance Functor (State m) where
   fmap f (State runstate) = State fun
-    where
-      fun state = do
-        (returned, newState) <- runstate state
-        return (f returned, newState)
+   where
+    fun state = do
+      (returned, newState) <- runstate state
+      return (f returned, newState)
 
 instance Applicative (State m) where
   pure value = State $ \state -> Right (value, state)
@@ -52,7 +53,7 @@ getEnvs = envStack <$> get
 setEnvs :: [Env] -> State InterpreterState ()
 setEnvs envs = do
   state <- get
-  set state {envStack = envs}
+  set state{envStack = envs}
 
 insertInEnv :: Symbol -> Value -> Bool -> [Env] -> [Env]
 insertInEnv str val isMut [] = [[(str, (val, isMut))]]
@@ -63,20 +64,20 @@ insertInEnv str val isMut (env : envs) = case lookup str env of
 addToPrintBuffer :: Value -> State InterpreterState ()
 addToPrintBuffer val = do
   state <- get
-  set state {printBuffer = printBuffer state ++ [val]}
+  set state{printBuffer = printBuffer state ++ [val]}
 
 type Env = [(Symbol, (Value, Bool))]
 
 data InterpreterState = InterpreterState
-  { envStack :: [Env], -- Stack of environments
-    printBuffer :: [Value] -- Buffer of values to print
+  { envStack :: [Env] -- Stack of environments
+  , printBuffer :: [Value] -- Buffer of values to print
   }
 
 initialState :: InterpreterState
 initialState =
   InterpreterState
-    { envStack = [[]],
-      printBuffer = []
+    { envStack = [[]]
+    , printBuffer = []
     }
 
 data Value
@@ -86,6 +87,7 @@ data Value
   | Closure [(Type, Symbol)] Node Env
   | Null
   | Error String
+  | EarlyReturn Value
   deriving (Show, Eq)
 
 -- Helper type class for operations between values
@@ -119,10 +121,15 @@ mul :: Value -> Value -> Value
 mul = numericOp (*) (*)
 
 div_ :: Value -> Value -> Value
-div_ v1 v2 = case v2 of
-  NumVal 0 -> Error "Division by zero"
-  FloatVal 0.0 -> Error "Division by zero"
-  _ -> numericOp div (/) v1 v2
+div_ _ (NumVal 0) = Error "Division by zero"
+div_ _ (FloatVal 0.0) = Error "Division by zero"
+div_ v1 v2 = numericOp div (/) v1 v2
+
+mod_ :: Value -> Value -> Value
+mod_ _ (NumVal 0) = Error "Division by zero"
+mod_ _ (FloatVal _) = Error "Modulo by Floating point value"
+mod_ (FloatVal _) _ = Error "Modulo by Floating point value"
+mod_ v1 v2 = numericOp mod const v1 v2
 
 boolToInt :: Bool -> Int
 boolToInt True = 1
@@ -136,6 +143,7 @@ eval (AddOp e1 e2) env = evalNumericOp add e1 e2 env
 eval (SubOp e1 e2) env = evalNumericOp sub e1 e2 env
 eval (MulOp e1 e2) env = evalNumericOp mul e1 e2 env
 eval (DivOp e1 e2) env = evalNumericOp div_ e1 e2 env
+eval (ModOp e1 e2) env = evalNumericOp mod_ e1 e2 env
 eval (AddEqOp str e) env = eval (VarAssign str $ AddOp (Identifier str) e) env
 eval (SubEqOp str e) env = eval (VarAssign str $ SubOp (Identifier str) e) env
 eval (MulEqOp str e) env = eval (VarAssign str $ MulOp (Identifier str) e) env
@@ -208,7 +216,15 @@ eval (Block (Return e : _) _) env = do
   return e'
 eval (Block (e : es) isBlockStart) env = do
   when isBlockStart (getEnvs >>= \mem -> setEnvs ([] : mem))
-  eval e env >> eval (Block es False) env
+  eval e env >>= \case
+    (EarlyReturn v) -> do
+      getEnvs >>= setEnvs . tail
+      return v
+    _ -> eval (Block es False) env
+eval (ConditionalBody []) _env = return Null
+eval (ConditionalBody (Return e : _)) env = eval e env >>= \e' -> pure $ EarlyReturn e'
+eval (ConditionalBody (e : es)) env =
+  eval e env >> eval (ConditionalBody es) env
 eval (Return e) env = do
   mem <- getEnvs
   if length mem > 1
@@ -238,8 +254,8 @@ eval (For base cond inc body) env = do
       | i /= 0 ->
           eval body env
             >> ( case inc of
-                   Nothing -> return Null
-                   (Just e) -> eval e env
+                  Nothing -> return Null
+                  (Just e) -> eval e env
                )
             >> eval (For Nothing cond inc body) env
     NumVal 0 -> return Null
@@ -264,7 +280,6 @@ eval (EnumElement _ _) _ = fail "Enums are not supported"
 eval (StructElement _ _) _ = fail "Structs are not supported"
 eval (CastToType _ _) _ = fail "Casting is not supported"
 eval (CastToIdentifier _ _) _ = fail "Casting is not supported"
-eval (ModOp e1 e2) env = fail "Modulo operator is not supported"
 eval (SizeofType _) _ = fail "Sizeof is not supported"
 eval (SizeofExpr _) _ = fail "Sizeof is not supported"
 eval (Reference _) _ = fail "References are not supported"
@@ -280,6 +295,6 @@ apply :: Value -> [Value] -> State InterpreterState Value
 apply (Closure ids e env) xs
   | length ids == length xs = eval e (linkedParams ++ env)
   | otherwise = fail "Arguments mismatch"
-  where
-    linkedParams = [(sym, (val, isMut)) | ((Type _ isMut, sym), val) <- zip ids xs]
+ where
+  linkedParams = [(sym, (val, isMut)) | ((Type _ isMut, sym), val) <- zip ids xs]
 apply _ _ = fail "Expected closure"

@@ -44,29 +44,29 @@ printP = do
 
 keywords :: [String]
 keywords =
-  [ "u8",
-    "u16",
-    "u32",
-    "i8",
-    "i16",
-    "i32",
-    "f32",
-    "void",
-    "mut",
-    "ptr",
-    "return",
-    "not",
-    "or",
-    "and",
-    "enum",
-    "struct",
-    "if",
-    "else",
-    "while",
-    "for",
-    "as",
-    "sizeof",
-    "syscall"
+  [ "u8"
+  , "u16"
+  , "u32"
+  , "i8"
+  , "i16"
+  , "i32"
+  , "f32"
+  , "void"
+  , "mut"
+  , "ptr"
+  , "return"
+  , "not"
+  , "or"
+  , "and"
+  , "enum"
+  , "struct"
+  , "if"
+  , "else"
+  , "while"
+  , "for"
+  , "as"
+  , "sizeof"
+  , "syscall"
   ]
 
 symbolP :: Parser Symbol
@@ -155,19 +155,22 @@ blockP = flip Block True <$> wrapP '{' '}' (sepBy ws exprP)
 returnP :: Parser Node
 returnP = Return <$> (stringP "return" *> notNull ws *> exprP)
 
+conditionalBodyP :: Parser Node
+conditionalBodyP = ConditionalBody <$> wrapP '{' '}' (sepBy ws exprP)
+
 ifP :: Parser Node
 ifP = do
   _ <- stringP "if"
   condition <- (ws *> wrapP '(' ')' exprP) <|> (notNull ws *> exprP <* notNull ws)
-  thenBranch <- ws *> exprP
-  elseBranch <- optionalP $ notNull ws *> stringP "else" *> notNull ws *> exprP
+  thenBranch <- ws *> conditionalBodyP
+  elseBranch <- optionalP $ ws *> stringP "else" *> ((notNull ws *> ifP) <|> (ws *> conditionalBodyP))
   return $ If condition thenBranch elseBranch
 
 whileP :: Parser Node
 whileP = do
   _ <- stringP "while"
   condition <- (ws *> wrapP '(' ')' exprP) <|> (notNull ws *> exprP <* notNull ws)
-  body <- ws *> exprP
+  body <- ws *> conditionalBodyP
   return $ While condition body
 
 forP :: Parser Node
@@ -176,7 +179,7 @@ forP = do
   initialization <- ws *> optionalP exprP <* ws <* charP ';'
   condition <- ws *> exprP <* ws <* charP ';'
   increment <- ws *> optionalP exprP <* ws <* charP ')'
-  body <- ws *> exprP
+  body <- ws *> conditionalBodyP
   return $ For initialization condition increment body
 
 -- u8 addu8 (u8 a , u8 b ) a + b
@@ -187,8 +190,8 @@ functionDeclarationP = do
   parameters <- sepBy (ws *> charP ',' <* ws) parameterP <* ws <* charP ')'
   body <- ws *> exprP
   return $ FunctionDeclaration returnType name parameters body
-  where
-    parameterP = (,) <$> typeP <*> (notNull ws *> symbolP)
+ where
+  parameterP = (,) <$> typeP <*> (notNull ws *> symbolP)
 
 functionCallP :: Parser Node
 functionCallP =
@@ -207,16 +210,16 @@ structDeclarationP =
   StructDeclaration
     <$> (stringP "struct" *> notNull ws *> symbolP <* ws)
     <*> wrapP '{' '}' (sepBy (charP ',') structFieldP)
-  where
-    structFieldP = (,) <$> typeP <*> (notNull ws *> symbolP)
+ where
+  structFieldP = (,) <$> typeP <*> (notNull ws *> symbolP)
 
 structInitializationP :: Parser Node
 structInitializationP = do
   name <- ws *> identifierP <* ws
   fields <- wrapP '{' '}' $ sepBy (ws *> charP ',' <* ws) structFieldP
   return $ StructInitialization name fields
-  where
-    structFieldP = (,) <$> identifierP <* ws <* charP ':' <* ws <*> exprP
+ where
+  structFieldP = (,) <$> identifierP <* ws <* charP ':' <* ws <*> exprP
 
 enumElementP :: Parser Node
 enumElementP = EnumElement <$> identifierP <* charP ':' <*> identifierP
@@ -237,7 +240,7 @@ sizeofP :: Parser Node
 sizeofP =
   (stringP "sizeof" *> charP '(' *> ws)
     *> ( (SizeofType <$> typeP)
-           <|> (SizeofExpr <$> exprP)
+          <|> (SizeofExpr <$> exprP)
        )
     <* (ws <* charP ')')
 

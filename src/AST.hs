@@ -36,6 +36,7 @@ data Node
   | VarDef Symbol Type Node
   | VarAssign Symbol Node
   | Block [Node] Bool
+  | ConditionalBody [Node]
   | Return Node
   | If Node Node (Maybe Node)
   | While Node Node
