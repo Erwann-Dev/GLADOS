@@ -1,3 +1,6 @@
+{-# LANGUAGE TupleSections #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 module ASTEval (
   eval,
   Value (..),
@@ -52,18 +55,18 @@ setEnvs envs = do
   state <- get
   set state{envStack = envs}
 
-insertInEnv :: Symbol -> Value -> [Env] -> [Env]
-insertInEnv str val [] = [[(str, val)]]
-insertInEnv str val (env : envs) = case lookup str env of
-  Just _ -> ((str, val) : filter ((/= str) . fst) env) : envs
-  Nothing -> env : insertInEnv str val envs
+insertInEnv :: Symbol -> Value -> Bool -> [Env] -> [Env]
+insertInEnv str val isMut [] = [[(str, (val, isMut))]]
+insertInEnv str val isMut (env : envs) = case lookup str env of
+  Just _ -> ((str, (val, isMut)) : filter ((/= str) . fst) env) : envs
+  Nothing -> env : insertInEnv str val isMut envs
 
 addToPrintBuffer :: Value -> State InterpreterState ()
 addToPrintBuffer val = do
   state <- get
   set state{printBuffer = printBuffer state ++ [val]}
 
-type Env = [(Symbol, Value)]
+type Env = [(Symbol, (Value, Bool))]
 
 data InterpreterState = InterpreterState
   { envStack :: [Env] -- Stack of environments
@@ -83,7 +86,44 @@ data Value
   | ListVal [Value]
   | Closure [(Type, Symbol)] Node Env
   | Null
+  | Error String
   deriving (Show, Eq)
+
+-- Helper type class for operations between values
+class NumericOp a where
+  numericOp :: (Int -> Int -> Int) -> (Float -> Float -> Float) -> a -> a -> Value
+
+instance NumericOp Value where
+  numericOp intOp floatOp v1 v2 = case (v1, v2) of
+    (NumVal n1, NumVal n2) -> NumVal (intOp n1 n2)
+    (FloatVal f1, FloatVal f2) -> FloatVal (floatOp f1 f2)
+    (NumVal n1, FloatVal f2) -> FloatVal (floatOp (fromIntegral n1) f2)
+    (FloatVal f1, NumVal n2) -> FloatVal (floatOp f1 (fromIntegral n2))
+    _ -> Error "type error" -- Using error here as we'll wrap it in Either later
+
+-- Helper functions for common operations
+evalNumericOp :: (Value -> Value -> Value) -> Node -> Node -> Env -> State InterpreterState Value
+evalNumericOp op e1 e2 env = do
+  v1 <- eval e1 env
+  v2 <- eval e2 env
+  case op v1 v2 of
+    (Error str) -> fail $ show str
+    result -> return result
+
+add :: Value -> Value -> Value
+add = numericOp (+) (+)
+
+sub :: Value -> Value -> Value
+sub = numericOp (-) (-)
+
+mul :: Value -> Value -> Value
+mul = numericOp (*) (*)
+
+div_ :: Value -> Value -> Value
+div_ v1 v2 = case v2 of
+  NumVal 0 -> Error "Division by zero"
+  FloatVal 0.0 -> Error "Division by zero"
+  _ -> numericOp div (/) v1 v2
 
 boolToInt :: Bool -> Int
 boolToInt True = 1
@@ -93,44 +133,10 @@ eval :: Node -> Env -> State InterpreterState Value
 eval (IntV n) _ = return $ NumVal n
 eval (FloatV b) _ = return $ FloatVal b
 eval (ArrayV xs) env = ListVal <$> mapM (`eval` env) xs
-eval (AddOp e1 e2) env = do
-  v1 <- eval e1 env
-  v2 <- eval e2 env
-  case (v1, v2) of
-    (NumVal n1, NumVal n2) -> return $ NumVal (n1 + n2)
-    (FloatVal n1, NumVal n2) -> return $ FloatVal (n1 + fromIntegral n2)
-    (NumVal n1, FloatVal n2) -> return $ NumVal (n1 + round n2)
-    (FloatVal n1, FloatVal n2) -> return $ FloatVal (n1 + n2)
-    _ -> fail "(+): type error"
-eval (SubOp e1 e2) env = do
-  v1 <- eval e1 env
-  v2 <- eval e2 env
-  case (v1, v2) of
-    (NumVal n1, NumVal n2) -> return $ NumVal (n1 - n2)
-    (FloatVal n1, NumVal n2) -> return $ FloatVal (n1 - fromIntegral n2)
-    (NumVal n1, FloatVal n2) -> return $ NumVal (n1 - round n2)
-    (FloatVal n1, FloatVal n2) -> return $ FloatVal (n1 - n2)
-    _ -> fail "(-): type error"
-eval (MulOp e1 e2) env = do
-  v1 <- eval e1 env
-  v2 <- eval e2 env
-  case (v1, v2) of
-    (NumVal n1, NumVal n2) -> return $ NumVal (n1 * n2)
-    (FloatVal n1, NumVal n2) -> return $ FloatVal (n1 * fromIntegral n2)
-    (NumVal n1, FloatVal n2) -> return $ NumVal (n1 * round n2)
-    (FloatVal n1, FloatVal n2) -> return $ FloatVal (n1 * n2)
-    _ -> fail "(*): type error"
-eval (DivOp e1 e2) env = do
-  v1 <- eval e1 env
-  v2 <- eval e2 env
-  case (v1, v2) of
-    (_, NumVal 0) -> fail "Division by zero"
-    (_, FloatVal 0) -> fail "Division by zero"
-    (NumVal n1, NumVal n2) -> return $ NumVal (n1 `div` n2)
-    (FloatVal n1, NumVal n2) -> return $ FloatVal (n1 / fromIntegral n2)
-    (NumVal n1, FloatVal n2) -> return $ NumVal (n1 `div` round n2)
-    (FloatVal n1, FloatVal n2) -> return $ FloatVal (n1 / n2)
-    _ -> fail "(/): type error"
+eval (AddOp e1 e2) env = evalNumericOp add e1 e2 env
+eval (SubOp e1 e2) env = evalNumericOp sub e1 e2 env
+eval (MulOp e1 e2) env = evalNumericOp mul e1 e2 env
+eval (DivOp e1 e2) env = evalNumericOp div_ e1 e2 env
 eval (AddEqOp str e) env = eval (VarAssign str $ AddOp (Identifier str) e) env
 eval (SubEqOp str e) env = eval (VarAssign str $ SubOp (Identifier str) e) env
 eval (MulEqOp str e) env = eval (VarAssign str $ MulOp (Identifier str) e) env
@@ -177,19 +183,20 @@ eval (GeqOp e1 e2) env = eval (OrOp (GtOp e1 e2) (EqOp e1 e2)) env
 eval (Identifier str) env = do
   mem <- getEnvs
   case lookup str env <|> lookupMem str mem of
-    Just x -> return x
+    Just (x, _) -> return x
     Nothing -> fail $ "variable " ++ str ++ " is not bound."
-eval (VarDef str _type e) env = do
+eval (VarDef str (Type _ isMut) e) env = do
   e' <- eval e env
   mem <- getEnvs
   case lookup str (head mem) of
     Just _ -> fail $ "variable " ++ str ++ " is already bound."
-    Nothing -> setEnvs (((str, e') : head mem) : tail mem) >> return Null
+    Nothing -> setEnvs (((str, (e', isMut)) : head mem) : tail mem) >> return Null
 eval (VarAssign str e) env = do
   e' <- eval e env
   mem <- getEnvs
   case lookupMem str mem of
-    Just _ -> setEnvs (insertInEnv str e' mem) >> return Null
+    Just (_, False) -> fail $ "variable " ++ str ++ " is not mutable."
+    Just _ -> setEnvs (insertInEnv str e' True mem) >> return Null
     Nothing -> fail $ "variable " ++ str ++ " is not bound."
 eval (Block [] _) _env = do
   mem <- getEnvs
@@ -242,7 +249,7 @@ eval (FunctionDeclaration _type str args body) env = do
   mem <- getEnvs
   case lookupMem str mem of
     Just _ -> fail $ "variable " ++ str ++ " is already bound."
-    Nothing -> setEnvs (((str, Closure args body env) : head mem) : tail mem) >> return Null
+    Nothing -> setEnvs (((str, (Closure args body env, False)) : head mem) : tail mem) >> return Null
 eval (FunctionCall id_ args) env = do
   id' <- eval id_ env
   args' <- mapM (`eval` env) args
@@ -253,12 +260,14 @@ eval (Print e) env = do
   return Null
 eval _ _ = fail "Not implemented"
 
-lookupMem :: Symbol -> [Env] -> Maybe Value
+lookupMem :: Symbol -> [Env] -> Maybe (Value, Bool)
 lookupMem _ [] = Nothing
 lookupMem str (env : envs) = lookup str env <|> lookupMem str envs
 
 apply :: Value -> [Value] -> State InterpreterState Value
 apply (Closure ids e env) xs
-  | length ids == length xs = eval e (zip (map snd ids) xs ++ env)
+  | length ids == length xs = eval e (linkedParams ++ env)
   | otherwise = fail "Arguments mismatch"
+ where
+  linkedParams = [(sym, (val, isMut)) | ((Type _ isMut, sym), val) <- zip ids xs]
 apply _ _ = fail "Expected closure"
