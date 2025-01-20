@@ -109,7 +109,7 @@ ptrTypeP =
 
 maybeNegateP :: (Num a) => Parser (a -> a)
 maybeNegateP = do
-  signs <- spanP $ \c -> c == '+' || c == '-'
+  signs <- spanP $ \c -> c == '+' || c == '-' || isSpace c
   pure $
     if even $ (length . filter (== '-')) signs
       then id
