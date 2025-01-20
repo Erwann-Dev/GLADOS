@@ -10,8 +10,8 @@ exprP = inlineP <|> exprP'
 
 exprP' :: Parser Node
 exprP' =
-  integerValueP
-    <|> floatValueP
+  floatValueP
+    <|> integerValueP
     <|> arrayAccessP
     <|> arrayValueP
     <|> variableInitializationP
@@ -118,10 +118,11 @@ maybeNegateP = do
 floatValueP :: Parser Node
 floatValueP = do
   maybeNegate <- maybeNegateP
-  separated <- (,) <$> spanP isDigit <* (ws *> optionalP (charP '.') <* ws) <*> spanP isDigit
-  absVal <- case separated of
+  digits <- spanP isDigit
+  decimal <- ws *> charP '.' *> ws *> notNull (spanP isDigit)
+  absVal <- case (digits, decimal) of
     ("", "") -> empty
-    (dig, "") -> pure $ read dig
+    (dig, "") -> empty
     ("", dec) -> pure $ read dec / (10 ^ length dec)
     (dig, dec) -> pure $ read dig + read dec / (10 ^ length dec)
   return $ FloatV $ maybeNegate absVal
