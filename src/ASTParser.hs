@@ -158,7 +158,7 @@ returnP = Return <$> (stringP "return" *> notNull ws *> exprP)
 ifP :: Parser Node
 ifP = do
   _ <- stringP "if"
-  condition <- wrapP '(' ')' exprP <|> (notNull ws *> exprP <* notNull ws)
+  condition <- (ws *> wrapP '(' ')' exprP) <|> (notNull ws *> exprP <* notNull ws)
   thenBranch <- ws *> exprP
   elseBranch <- optionalP $ notNull ws *> stringP "else" *> notNull ws *> exprP
   return $ If condition thenBranch elseBranch
@@ -166,7 +166,7 @@ ifP = do
 whileP :: Parser Node
 whileP = do
   _ <- stringP "while"
-  condition <- wrapP '(' ')' exprP <|> (notNull ws *> exprP <* notNull ws)
+  condition <- (ws *> wrapP '(' ')' exprP) <|> (notNull ws *> exprP <* notNull ws)
   body <- ws *> exprP
   return $ While condition body
 
@@ -276,10 +276,10 @@ assignmentP :: Parser Node
 assignmentP = do
   id' <- symbolP <* ws
   con <-
-    (AddEqOp <$ stringP "+=")
-      <|> (SubEqOp <$ stringP "-=")
-      <|> (MulEqOp <$ stringP "*=")
-      <|> (DivEqOp <$ stringP "/=")
+    (AddEqOp <$ charP '+' <* ws <* charP '=')
+      <|> (SubEqOp <$ charP '-' <* ws <* charP '=')
+      <|> (MulEqOp <$ charP '*' <* ws <* charP '=')
+      <|> (DivEqOp <$ charP '/' <* ws <* charP '=')
       <|> (VarAssign <$ stringP "=")
   con id' <$> (ws *> exprP)
 
@@ -294,10 +294,10 @@ booleanOpP :: Parser Node
 booleanOpP = do
   e1 <- inlineP'' <* ws
   con <-
-    (EqOp <$ stringP "==")
-      <|> (NeqOp <$ stringP "!=")
-      <|> (GeqOp <$ stringP ">=")
-      <|> (LeqOp <$ stringP "<=")
+    (EqOp <$ charP '=' <* ws <* charP '=')
+      <|> (NeqOp <$ charP '!' <* ws <* charP '=')
+      <|> (GeqOp <$ charP '>' <* ws <* charP '=')
+      <|> (LeqOp <$ charP '<' <* ws <* charP '=')
       <|> (GtOp <$ charP '>')
       <|> (LtOp <$ charP '<')
   con e1 <$> (ws *> inlineP')
