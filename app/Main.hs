@@ -1,12 +1,18 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Main (main) where
 
 -- import Preprocessor (runPreprocessor)
-import Utils (tryReadFile)
-import Preprocessor (runPreprocessor)
+
+import AST
+import ASTEval
 import ASTParser (exprP)
+import Control.Monad
+import Parser
+import Preprocessor (runPreprocessor)
 import System.Environment (getArgs)
-import System.Exit (exitWith, ExitCode(ExitFailure))
-import Parser (Parser(runParser))
+import System.Exit (ExitCode (ExitFailure), exitWith)
+import Utils (File (..), tryReadFile)
 
 -- import AST
 -- import ASTEval
@@ -26,14 +32,6 @@ import Parser (Parser(runParser))
 --         c <- getChar
 --         cs <- getStdin
 --         return (c : cs)
--- executeLines :: Env -> [Expr] -> IO ()
--- executeLines _ [] = pure ()
--- executeLines env (x : xs) = do
---   case runState (eval x []) env of
---     Left err -> putStrLn err >> exitWith (ExitFailure 84)
---     Right (res, env') -> do
---       when (show res /= "") $ print res
---       executeLines env' xs
 -- repl :: IO ()
 -- repl = do
 --   putStrLn "Welcome to the LISP interpreter"
@@ -54,19 +52,19 @@ import Parser (Parser(runParser))
 --             repl' env'
 -- main :: IO ()
 -- main = do
---   args <- getArgs
---   fileInput <- case args of
---     [] -> getStdin
---     ["repl"] -> repl >> exitSuccess
---     [name] ->
---       tryReadFile name >>= \case
---         Right file -> pure file
---         Left err -> putStrLn err >> exitWith (ExitFailure 84)
---     _ -> printHelp >> exitWith (ExitFailure 84)
---   tryEval (runParser lispP fileInput)
---  where
---   tryEval Nothing = putStrLn "parseError: invalid syntax" >> exitWith (ExitFailure 84)
---   tryEval (Just (_, expressions)) = executeLines [] expressions
+--     args <- getArgs
+--     fileInput <- case args of
+--         -- [] -> getStdin
+--         -- ["repl"] -> repl >> exitSuccess
+--         [name] ->
+--             tryReadFile name Nothing >>= \case
+--                 Right file -> pure $ content file
+--                 Left err -> putStrLn err >> exitWith (ExitFailure 84)
+--         _ -> putStrLn "USAGE: ./glados [file]" >> exitWith (ExitFailure 84)
+--     tryEval (runParser (ws *> sepBy ws exprP <* ws) fileInput)
+--   where
+--     tryEval Nothing = putStrLn "parseError: invalid syntax" >> exitWith (ExitFailure 84)
+--     tryEval (Just (_, expressions)) = executeLines initialState expressions
 
 main :: IO ()
 main = do
@@ -85,7 +83,7 @@ main = do
         Nothing -> do
             putStrLn "preprocessorError: invalid syntax"
             exitWith (ExitFailure 84)
-        Just result -> case runParser exprP result of
+        Just result -> case runParser (ws *> sepBy ws exprP <* ws) result of
             Nothing -> do
                 putStrLn "parseError: invalid syntax"
                 exitWith (ExitFailure 84)
@@ -94,4 +92,11 @@ main = do
                     then do
                         putStrLn "parseError: invalid syntax"
                         exitWith (ExitFailure 84)
-                    else print ast
+                    else executeLines initialState ast
+
+executeLines :: InterpreterState -> [Node] -> IO ()
+executeLines _ [] = return ()
+executeLines state (x : xs) = do
+    case runState (eval x []) state of
+        Left err -> putStrLn err >> exitWith (ExitFailure 84)
+        Right (_, newState) -> mapM_ print (printBuffer newState) >> executeLines (newState{printBuffer = []}) xs

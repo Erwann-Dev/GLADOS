@@ -14,22 +14,19 @@ data Type = Type
   { basic_type :: BasicType
   , mutable :: Bool
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 data BasicType
   = U8
   | U16
   | U32
-  | U64
   | I8
   | I16
   | I32
-  | I64
   | F32
-  | F64
   | Void
   | Pointer Type
-  deriving (Show)
+  deriving (Show, Eq)
 
 data Node
   = IntV Int
@@ -38,7 +35,7 @@ data Node
   | Identifier Symbol
   | VarDef Symbol Type Node
   | VarAssign Symbol Node
-  | Block [Node]
+  | Block [Node] Bool
   | Return Node
   | If Node Node (Maybe Node)
   | While Node Node
@@ -76,4 +73,5 @@ data Node
   | Dereference Node
   | ArrayAccess Node Node
   | Syscall [Node]
-  deriving (Show)
+  | Print Node
+  deriving (Show, Eq)
