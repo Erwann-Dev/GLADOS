@@ -42,7 +42,7 @@ import Utils (tryReadFile)
 --     _ -> case runParser (only exprP) line of
 --       Nothing -> putStrLn "parseError: invalid syntax" >> repl' env
 --       Just (_, expression) -> do
---         case runState (eval expression []) env of
+--         case runState (eval expression) env of
 --           Left err -> putStrLn ("*** ERROR : " ++ err) >> repl' env
 --           Right (res, env') -> do
 --             when (show res /= "") $ print res
@@ -94,6 +94,6 @@ main = do
 executeLines :: InterpreterState -> [Node] -> IO ()
 executeLines _ [] = return ()
 executeLines state (x : xs) = do
-  case runState (eval x []) state of
+  case runState (eval x) state of
     Left err -> putStrLn err >> exitWith (ExitFailure 84)
     Right (_, newState) -> mapM_ print (printBuffer newState) >> executeLines (newState {printBuffer = []}) xs

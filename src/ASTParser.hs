@@ -44,29 +44,29 @@ printP = do
 
 keywords :: [String]
 keywords =
-  [ "u8",
-    "u16",
-    "u32",
-    "i8",
-    "i16",
-    "i32",
-    "f32",
-    "void",
-    "mut",
-    "ptr",
-    "return",
-    "not",
-    "or",
-    "and",
-    "enum",
-    "struct",
-    "if",
-    "else",
-    "while",
-    "for",
-    "as",
-    "sizeof",
-    "syscall"
+  [ "u8"
+  , "u16"
+  , "u32"
+  , "i8"
+  , "i16"
+  , "i32"
+  , "f32"
+  , "void"
+  , "mut"
+  , "ptr"
+  , "return"
+  , "not"
+  , "or"
+  , "and"
+  , "enum"
+  , "struct"
+  , "if"
+  , "else"
+  , "while"
+  , "for"
+  , "as"
+  , "sizeof"
+  , "syscall"
   ]
 
 symbolP :: Parser Symbol
@@ -190,8 +190,8 @@ functionDeclarationP = do
   parameters <- sepBy (ws *> charP ',' <* ws) parameterP <* ws <* charP ')'
   body <- ws *> exprP
   return $ FunctionDeclaration returnType name parameters body
-  where
-    parameterP = (,) <$> typeP <*> (notNull ws *> symbolP)
+ where
+  parameterP = (,) <$> typeP <*> (notNull ws *> symbolP)
 
 functionCallP :: Parser Node
 functionCallP =
@@ -210,16 +210,16 @@ structDeclarationP =
   StructDeclaration
     <$> (stringP "struct" *> notNull ws *> symbolP <* ws)
     <*> wrapP '{' '}' (sepBy (ws *> charP ',' <* ws) structFieldP)
-  where
-    structFieldP = (,) <$> typeP <*> (notNull ws *> symbolP)
+ where
+  structFieldP = (,) <$> typeP <*> (notNull ws *> symbolP)
 
 structInitializationP :: Parser Node
 structInitializationP = do
   name <- ws *> identifierP <* ws
   fields <- wrapP '{' '}' $ sepBy (ws *> charP ',' <* ws) structFieldP
   return $ StructInitialization name fields
-  where
-    structFieldP = (,) <$> identifierP <* ws <* charP ':' <* ws <*> exprP
+ where
+  structFieldP = (,) <$> identifierP <* ws <* charP ':' <* ws <*> exprP
 
 enumElementP :: Parser Node
 enumElementP = EnumElement <$> identifierP <* (ws *> charP ':' <* ws) <*> identifierP
@@ -240,15 +240,15 @@ sizeofP :: Parser Node
 sizeofP =
   (stringP "sizeof" *> charP '(' *> ws)
     *> ( (SizeofType <$> typeP)
-           <|> (SizeofExpr <$> exprP)
+          <|> (SizeofExpr <$> exprP)
        )
     <* (ws <* charP ')')
 
 referenceP :: Parser Node
-referenceP = Reference <$> (charP '&' *> exprP)
+referenceP = Reference <$> (charP '&' *> ws *> identifierP)
 
 dereferenceP :: Parser Node
-dereferenceP = Reference <$> (charP '*' *> exprP)
+dereferenceP = Dereference <$> (charP '*' *> ws *> identifierP)
 
 arrayAccessP :: Parser Node
 arrayAccessP = ArrayAccess <$> (identifierP <|> arrayValueP) <*> wrapP '[' ']' exprP

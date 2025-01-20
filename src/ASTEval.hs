@@ -1,6 +1,8 @@
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
+{-# HLINT ignore "Use <&>" #-}
+
 module ASTEval (
   eval,
   Value (..),
@@ -14,9 +16,12 @@ where
 import AST
 import Control.Applicative
 import Control.Monad
-import Foreign.Marshal
-import Foreign.Ptr
-import Foreign.Storable
+
+-- import Data.IntMap (member)
+-- import Data.IntMap.Merge.Lazy (merge)
+-- import Foreign.Marshal
+-- import Foreign.Ptr
+-- import Foreign.Storable
 
 newtype State s a = State {runState :: s -> Either String (a, s)}
 
@@ -58,44 +63,63 @@ setEnvs envs = do
   state <- get
   set state{envStack = envs}
 
+reverseList :: [a] -> [a]
+reverseList = foldl (flip (:)) []
+
+getIndexValue :: Int -> State InterpreterState (Value, Bool)
+getIndexValue i = do
+  mem <- getEnvs
+  let flattenedMem = reverseList $ concat mem
+  if i < 0 || i >= length flattenedMem
+    then fail "Dereference: out of bounds"
+    else return $ snd $ flattenedMem !! i
+
+getSymbolIndex :: Symbol -> State InterpreterState Int
+getSymbolIndex str = do
+  mem <- getEnvs
+  let flattenedMem = reverseList $ concat mem
+  case lookup str flattenedMem of
+    Just (_, _) -> return $ getSymbolIndex' str flattenedMem
+    Nothing -> fail $ "variable " ++ str ++ " is not bound."
+
+getSymbolIndex' :: Symbol -> Env -> Int
+getSymbolIndex' _ [] = -1
+getSymbolIndex' str ((sym, _) : env) = if str == sym then 0 else 1 + getSymbolIndex' str env
+
 addToPrintBuffer :: Value -> State InterpreterState ()
 addToPrintBuffer val = do
   state <- get
   set state{printBuffer = printBuffer state ++ [val]}
 
-mallocedInt :: String -> Int -> IO (State InterpreterState Value)
-mallocedInt identifier nb = do
-  intPtr <- malloc
-  poke intPtr nb
-  return $ State $ \state -> Right (PtrNumVal intPtr, state{intPointers = (identifier, intPtr) : intPointers state})
-
-mallocedFloat :: String -> Float -> IO (State InterpreterState Value)
-mallocedFloat identifier nb = do
-  floatPtr <- malloc
-  poke floatPtr nb
-  return $ State $ \state -> Right (PtrFloatVal floatPtr, state{floatPointers = (identifier, floatPtr) : floatPointers state})
+-- mallocedInt :: String -> Int -> IO (State InterpreterState Value)
+-- mallocedInt identifier nb = do
+--   intPtr <- malloc
+--   poke intPtr nb
+--   return $ State $ \state -> Right (PtrNumVal intPtr, state{intPointers = (identifier, intPtr) : intPointers state})
+--
+-- mallocedFloat :: String -> Float -> IO (State InterpreterState Value)
+-- mallocedFloat identifier nb = do
+--   floatPtr <- malloc
+--   poke floatPtr nb
+--   return $ State $ \state -> Right (PtrFloatVal floatPtr, state{floatPointers = (identifier, floatPtr) : floatPointers state})
 
 type Env = [(Symbol, (Value, Bool))]
 
 data InterpreterState = InterpreterState
   { envStack :: [Env] -- Stack of environments
   , printBuffer :: [Value] -- Buffer of values to print
-  , intPointers :: [(Symbol, Ptr Int)] -- Pointers to integer values
-  , floatPointers :: [(Symbol, Ptr Float)] -- Pointers to float values
   }
 
 initialState :: InterpreterState
 initialState =
   InterpreterState
-    { envStack = [[]]
+    { envStack = [[("NULL", (Null, False))]]
     , printBuffer = []
     }
 
 data Value
   = NumVal Int
   | FloatVal Float
-  | PtrNumVal (Ptr Int)
-  | PtrFloatVal (Ptr Float)
   | ListVal [Value]
   | Closure [(Type, Symbol)] Node
   | Null
@@ -304,8 +328,14 @@ eval (CastToType _ _) = fail "Casting is not supported"
 eval (CastToIdentifier _ _) = fail "Casting is not supported"
 eval (SizeofType _) = fail "Sizeof is not supported"
 eval (SizeofExpr _) = fail "Sizeof is not supported"
-eval (Reference _) = fail "References are not supported"
-eval (Dereference _) = fail "References are not supported"
+eval (Reference (Identifier e)) = NumVal <$> getSymbolIndex e
+eval (Reference _) = fail "Reference: type error"
+eval (Dereference (Identifier e)) = do
+  e' <- eval $ Identifier e
+  case e' of
+    (NumVal i) -> getIndexValue i >>= return . fst
+    _ -> fail "Dereference: type error"
+eval (Dereference _) = fail "Dereference: type error"
 eval (Syscall _) = fail "Syscalls are not supported"
 
 lookupMem :: Symbol -> [Env] -> Maybe (Value, Bool)
