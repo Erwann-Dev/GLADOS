@@ -1,14 +1,13 @@
-{-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module ASTEval (
-  eval,
-  Value (..),
-  Env,
-  State (..),
-  initialState,
-  InterpreterState (..),
-)
+module ASTEval
+  ( eval,
+    Value (..),
+    Env,
+    State (..),
+    initialState,
+    InterpreterState (..),
+  )
 where
 
 import AST
@@ -19,10 +18,10 @@ newtype State s a = State {runState :: s -> Either String (a, s)}
 
 instance Functor (State m) where
   fmap f (State runstate) = State fun
-   where
-    fun state = do
-      (returned, newState) <- runstate state
-      return (f returned, newState)
+    where
+      fun state = do
+        (returned, newState) <- runstate state
+        return (f returned, newState)
 
 instance Applicative (State m) where
   pure value = State $ \state -> Right (value, state)
@@ -53,7 +52,7 @@ getEnvs = envStack <$> get
 setEnvs :: [Env] -> State InterpreterState ()
 setEnvs envs = do
   state <- get
-  set state{envStack = envs}
+  set state {envStack = envs}
 
 insertInEnv :: Symbol -> Value -> Bool -> [Env] -> [Env]
 insertInEnv str val isMut [] = [[(str, (val, isMut))]]
@@ -64,20 +63,20 @@ insertInEnv str val isMut (env : envs) = case lookup str env of
 addToPrintBuffer :: Value -> State InterpreterState ()
 addToPrintBuffer val = do
   state <- get
-  set state{printBuffer = printBuffer state ++ [val]}
+  set state {printBuffer = printBuffer state ++ [val]}
 
 type Env = [(Symbol, (Value, Bool))]
 
 data InterpreterState = InterpreterState
-  { envStack :: [Env] -- Stack of environments
-  , printBuffer :: [Value] -- Buffer of values to print
+  { envStack :: [Env], -- Stack of environments
+    printBuffer :: [Value] -- Buffer of values to print
   }
 
 initialState :: InterpreterState
 initialState =
   InterpreterState
-    { envStack = [[]]
-    , printBuffer = []
+    { envStack = [[]],
+      printBuffer = []
     }
 
 data Value
@@ -239,8 +238,8 @@ eval (For base cond inc body) env = do
       | i /= 0 ->
           eval body env
             >> ( case inc of
-                  Nothing -> return Null
-                  (Just e) -> eval e env
+                   Nothing -> return Null
+                   (Just e) -> eval e env
                )
             >> eval (For Nothing cond inc body) env
     NumVal 0 -> return Null
@@ -258,7 +257,20 @@ eval (Print e) env = do
   value <- eval e env
   addToPrintBuffer value
   return Null
-eval _ _ = fail "Not implemented"
+eval (EnumDeclaration _ _) _ = fail "Enums are not supported"
+eval (StructDeclaration _ _) _ = fail "Structs are not supported"
+eval (StructInitialization _ _) _ = fail "Structs are not supported"
+eval (EnumElement _ _) _ = fail "Enums are not supported"
+eval (StructElement _ _) _ = fail "Structs are not supported"
+eval (CastToType _ _) _ = fail "Casting is not supported"
+eval (CastToIdentifier _ _) _ = fail "Casting is not supported"
+eval (ModOp e1 e2) env = fail "Modulo operator is not supported"
+eval (SizeofType _) _ = fail "Sizeof is not supported"
+eval (SizeofExpr _) _ = fail "Sizeof is not supported"
+eval (Reference _) _ = fail "References are not supported"
+eval (Dereference _) _ = fail "References are not supported"
+eval (ArrayAccess _ _) _ = fail "Array access is not supported"
+eval (Syscall _) _ = fail "Syscalls are not supported"
 
 lookupMem :: Symbol -> [Env] -> Maybe (Value, Bool)
 lookupMem _ [] = Nothing
@@ -268,6 +280,6 @@ apply :: Value -> [Value] -> State InterpreterState Value
 apply (Closure ids e env) xs
   | length ids == length xs = eval e (linkedParams ++ env)
   | otherwise = fail "Arguments mismatch"
- where
-  linkedParams = [(sym, (val, isMut)) | ((Type _ isMut, sym), val) <- zip ids xs]
+  where
+    linkedParams = [(sym, (val, isMut)) | ((Type _ isMut, sym), val) <- zip ids xs]
 apply _ _ = fail "Expected closure"
