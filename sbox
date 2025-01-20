@@ -1,0 +1,11 @@
+mut u32 a = 0
+u32 test(mut u32 c) {
+	print(c)
+	if (1) {
+		c = 12
+	}
+	print(c)
+}
+
+test(a)
+print(a)
