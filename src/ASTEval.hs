@@ -125,7 +125,16 @@ data Value
   | Null
   | Error String
   | EarlyReturn Value
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show Value where
+  show (NumVal n) = show n
+  show (FloatVal f) = show f
+  show (ListVal xs) = "[" ++ unwords (map show xs) ++ "]"
+  show (Closure _ _) = "<closure>"
+  show Null = "null"
+  show (Error str) = "Error: " ++ str
+  show (EarlyReturn v) = "Early return: " ++ show v
 
 -- Helper type class for operations between values
 class NumericOp a where
