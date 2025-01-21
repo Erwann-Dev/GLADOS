@@ -7,101 +7,23 @@ module ASTEval (
   eval,
   Value (..),
   Env,
-  State (..),
   initialState,
   InterpreterState (..),
-)
-where
+  runEval, -- New export for running the interpreter
+) where
 
 import AST
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Except
+import Control.Monad.State
 
--- import Data.IntMap (member)
--- import Data.IntMap.Merge.Lazy (merge)
--- import Foreign.Marshal
--- import Foreign.Ptr
--- import Foreign.Storable
+-- Type alias for our interpreter monad stack
+type Interpreter a = ExceptT String (State InterpreterState) a
 
-newtype State s a = State {runState :: s -> Either String (a, s)}
-
-instance Functor (State m) where
-  fmap f (State runstate) = State fun
-   where
-    fun state = do
-      (returned, newState) <- runstate state
-      return (f returned, newState)
-
-instance Applicative (State m) where
-  pure value = State $ \state -> Right (value, state)
-  s1 <*> s2 = State $ \state -> do
-    (f, newState) <- runState s1 state
-    (returned, newState') <- runState s2 newState
-    return (f returned, newState')
-
-instance Monad (State m) where
-  return = pure
-  st >>= f = State $ \state -> do
-    (returned, newState) <- runState st state
-    let st' = f returned
-    runState st' newState
-
-instance MonadFail (State m) where
-  fail = State . const . Left
-
-set :: a -> State a ()
-set x = State $ \_ -> Right ((), x)
-
-get :: State a a
-get = State $ \m -> Right (m, m)
-
-getEnvs :: State InterpreterState [Env]
-getEnvs = envStack <$> get
-
-setEnvs :: [Env] -> State InterpreterState ()
-setEnvs envs = do
-  state <- get
-  set state{envStack = envs}
-
-reverseList :: [a] -> [a]
-reverseList = foldl (flip (:)) []
-
-getIndexValue :: Int -> State InterpreterState (Value, Bool)
-getIndexValue i = do
-  mem <- getEnvs
-  let flattenedMem = reverseList $ concat mem
-  if i < 0 || i >= length flattenedMem
-    then fail "Dereference: out of bounds"
-    else return $ snd $ flattenedMem !! i
-
-getSymbolIndex :: Symbol -> State InterpreterState Int
-getSymbolIndex str = do
-  mem <- getEnvs
-  let flattenedMem = reverseList $ concat mem
-  case lookup str flattenedMem of
-    Just (_, _) -> return $ getSymbolIndex' str flattenedMem
-    Nothing -> fail $ "variable " ++ str ++ " is not bound."
-
-getSymbolIndex' :: Symbol -> Env -> Int
-getSymbolIndex' _ [] = -1
-getSymbolIndex' str ((sym, _) : env) = if str == sym then 0 else 1 + getSymbolIndex' str env
-
-addToPrintBuffer :: Value -> State InterpreterState ()
-addToPrintBuffer val = do
-  state <- get
-  set state{printBuffer = printBuffer state ++ [val]}
-
--- mallocedInt :: String -> Int -> IO (State InterpreterState Value)
--- mallocedInt identifier nb = do
---   intPtr <- malloc
---   poke intPtr nb
---   return $ State $ \state -> Right (PtrNumVal intPtr, state{intPointers = (identifier, intPtr) : intPointers state})
---
--- mallocedFloat :: String -> Float -> IO (State InterpreterState Value)
--- mallocedFloat identifier nb = do
---   floatPtr <- malloc
---   poke floatPtr nb
---   return $ State $ \state -> Right (PtrFloatVal floatPtr, state{floatPointers = (identifier, floatPtr) : floatPointers state})
+-- Function to run the interpreter
+runEval :: Interpreter a -> InterpreterState -> (Either String a, InterpreterState)
+runEval m = runState (runExceptT m)
 
 type Env = [(Symbol, (Value, Bool))]
 
@@ -127,14 +49,38 @@ data Value
   | EarlyReturn Value
   deriving (Eq, Show)
 
--- instance Show Value where
---   show (NumVal n) = show n
---   show (FloatVal f) = show f
---   show (ListVal xs) = "[" ++ unwords (map show xs) ++ "]"
---   show (Closure _ _) = "<closure>"
---   show Null = "null"
---   show (Error str) = "Error: " ++ str
---   show (EarlyReturn v) = "Early return: " ++ show v
+-- Helper functions for state manipulation
+getEnvs :: Interpreter [Env]
+getEnvs = lift $ gets envStack
+
+setEnvs :: [Env] -> Interpreter ()
+setEnvs envs = lift $ modify $ \s -> s{envStack = envs}
+
+reverseList :: [a] -> [a]
+reverseList = foldl (flip (:)) []
+
+getIndexValue :: Int -> Interpreter (Value, Bool)
+getIndexValue i = do
+  mem <- getEnvs
+  let flattenedMem = reverseList $ concat mem
+  if i < 0 || i >= length flattenedMem
+    then throwError "Dereference: out of bounds"
+    else return $ snd $ flattenedMem !! i
+
+getSymbolIndex :: Symbol -> Interpreter Int
+getSymbolIndex str = do
+  mem <- getEnvs
+  let flattenedMem = reverseList $ concat mem
+  case lookup str flattenedMem of
+    Just (_, _) -> return $ getSymbolIndex' str flattenedMem
+    Nothing -> throwError $ "variable " ++ str ++ " is not bound."
+
+getSymbolIndex' :: Symbol -> Env -> Int
+getSymbolIndex' _ [] = -1
+getSymbolIndex' str ((sym, _) : env) = if str == sym then 0 else 1 + getSymbolIndex' str env
+
+addToPrintBuffer :: Value -> Interpreter ()
+addToPrintBuffer val = lift $ modify $ \s -> s{printBuffer = printBuffer s ++ [val]}
 
 -- Helper type class for operations between values
 class NumericOp a where
@@ -146,15 +92,15 @@ instance NumericOp Value where
     (FloatVal f1, FloatVal f2) -> FloatVal (floatOp f1 f2)
     (NumVal n1, FloatVal f2) -> FloatVal (floatOp (fromIntegral n1) f2)
     (FloatVal f1, NumVal n2) -> FloatVal (floatOp f1 (fromIntegral n2))
-    _ -> Error "type error" -- Using error here as we'll wrap it in Either later
+    _ -> Error "type error"
 
 -- Helper functions for common operations
-evalNumericOp :: (Value -> Value -> Value) -> Node -> Node -> State InterpreterState Value
+evalNumericOp :: (Value -> Value -> Value) -> Node -> Node -> Interpreter Value
 evalNumericOp op e1 e2 = do
   v1 <- eval e1
   v2 <- eval e2
   case op v1 v2 of
-    (Error str) -> fail $ show str
+    (Error str) -> throwError $ show str
     result -> return result
 
 add :: Value -> Value -> Value
@@ -181,7 +127,7 @@ boolToInt :: Bool -> Int
 boolToInt True = 1
 boolToInt False = 0
 
-eval :: Node -> State InterpreterState Value
+eval :: Node -> Interpreter Value
 eval (IntV n) = return $ NumVal n
 eval (FloatV b) = return $ FloatVal b
 eval (ArrayV xs) = ListVal <$> mapM eval xs
@@ -198,19 +144,19 @@ eval (NotOp e) = do
   v <- eval e
   case v of
     NumVal n -> return $ NumVal $ boolToInt (n == 0)
-    _ -> fail "not: type error"
+    _ -> throwError "not: type error"
 eval (AndOp e1 e2) = do
   v1 <- eval e1
   v2 <- eval e2
   case (v1, v2) of
     (NumVal n1, NumVal n2) -> return $ NumVal $ boolToInt (n1 /= 0 && n2 /= 0)
-    _ -> fail "and: type error"
+    _ -> throwError "and: type error"
 eval (OrOp e1 e2) = do
   v1 <- eval e1
   v2 <- eval e2
   case (v1, v2) of
     (NumVal n1, NumVal n2) -> return $ NumVal $ boolToInt (n1 /= 0 || n2 /= 0)
-    _ -> fail "or: type error"
+    _ -> throwError "or: type error"
 eval (EqOp e1 e2) = NumVal . boolToInt <$> ((==) <$> eval e1 <*> eval e2)
 eval (NeqOp e1 e2) = eval (NotOp (EqOp e1 e2))
 eval (GtOp e1 e2) = do
@@ -221,7 +167,7 @@ eval (GtOp e1 e2) = do
     (FloatVal n1, NumVal n2) -> return $ NumVal $ boolToInt (n1 > fromIntegral n2)
     (NumVal n1, FloatVal n2) -> return $ NumVal $ boolToInt (fromIntegral n1 > n2)
     (FloatVal n1, FloatVal n2) -> return $ NumVal $ boolToInt (n1 > n2)
-    _ -> fail "(>): type error"
+    _ -> throwError "(>): type error"
 eval (LtOp e1 e2) = do
   v1 <- eval e1
   v2 <- eval e2
@@ -230,35 +176,34 @@ eval (LtOp e1 e2) = do
     (FloatVal n1, NumVal n2) -> return $ NumVal $ boolToInt (n1 < fromIntegral n2)
     (NumVal n1, FloatVal n2) -> return $ NumVal $ boolToInt (fromIntegral n1 < n2)
     (FloatVal n1, FloatVal n2) -> return $ NumVal $ boolToInt (n1 < n2)
-    _ -> fail "(<): type error"
+    _ -> throwError "(<): type error"
 eval (LeqOp e1 e2) = eval (OrOp (LtOp e1 e2) (EqOp e1 e2))
 eval (GeqOp e1 e2) = eval (OrOp (GtOp e1 e2) (EqOp e1 e2))
 eval (Identifier str) = do
   mem <- getEnvs
   case lookupMem str mem of
     Just (x, _) -> return x
-    Nothing -> fail $ "variable " ++ str ++ " is not bound."
+    Nothing -> throwError $ "variable " ++ str ++ " is not bound."
 eval (VarDef str (Type _ isMut) e) = do
   e' <- eval e
   mem <- getEnvs
   case lookup str (head mem) of
-    Just _ -> fail $ "variable " ++ str ++ " is already bound."
+    Just _ -> throwError $ "variable " ++ str ++ " is already bound."
     Nothing -> setEnvs (((str, (e', isMut)) : head mem) : tail mem) >> return Null
 eval (VarAssign str e) = do
   e' <- eval e
   mem <- getEnvs
   case lookupMem str mem of
-    Just (_, False) -> fail $ "variable " ++ str ++ " is not mutable."
+    Just (_, False) -> throwError $ "variable " ++ str ++ " is not mutable."
     Just _ -> setEnvs (((str, (e', True)) : head mem) : tail mem) >> return Null
-    Nothing -> fail $ "variable " ++ str ++ " is not bound."
+    Nothing -> throwError $ "variable " ++ str ++ " is not bound."
 eval (Block [] _) = do
   mem <- getEnvs
   setEnvs (tail mem)
   return Null
 eval (Block (Return e : _) _) = do
   e' <- eval e
-  mem <- getEnvs
-  setEnvs (tail mem)
+  getEnvs >>= setEnvs . tail
   return e'
 eval (Block (e : es) isBlockStart) = do
   when isBlockStart (getEnvs >>= \mem -> setEnvs ([] : mem))
@@ -275,7 +220,7 @@ eval (Return e) = do
   mem <- getEnvs
   if length mem > 1
     then eval e
-    else fail "Return outside of block"
+    else throwError "Return outside of block"
 eval (If cond e1 e2) = do
   evaledCond <- eval cond
   case evaledCond of
@@ -283,13 +228,13 @@ eval (If cond e1 e2) = do
     NumVal 0 -> case e2 of
       (Just e2') -> eval e2'
       _ -> return Null
-    _ -> fail "If: type error"
+    _ -> throwError "If: type error"
 eval (While cond e) = do
   evaledCond <- eval cond
   case evaledCond of
     NumVal i | i /= 0 -> eval e >> eval (While cond e)
     NumVal 0 -> return Null
-    _ -> fail "While: type error"
+    _ -> throwError "While: type error"
 eval (For base cond inc body) = do
   _ <- case base of
     Nothing -> return Null
@@ -305,11 +250,11 @@ eval (For base cond inc body) = do
                )
             >> eval (For Nothing cond inc body)
     NumVal 0 -> return Null
-    _ -> fail "For: type error"
+    _ -> throwError "For: type error"
 eval (FunctionDeclaration _type str args body) = do
   mem <- getEnvs
   case lookupMem str mem of
-    Just _ -> fail $ "variable " ++ str ++ " is already bound."
+    Just _ -> throwError $ "variable " ++ str ++ " is already bound."
     Nothing -> setEnvs (((str, (Closure args body, False)) : head mem) : tail mem) >> return Null
 eval (FunctionCall id_ args) = do
   id' <- eval id_
@@ -326,34 +271,34 @@ eval (ArrayAccess eArr eIndex) = do
     (ListVal xs, NumVal i) ->
       if i >= 0 && i < length xs
         then return $ xs !! i
-        else fail "Array index out of bounds"
-    _ -> fail "Array access: type error"
-eval (EnumDeclaration _ _) = fail "Enums are not supported"
-eval (StructDeclaration _ _) = fail "Structs are not supported"
-eval (StructInitialization _ _) = fail "Structs are not supported"
-eval (EnumElement _ _) = fail "Enums are not supported"
-eval (StructElement _ _) = fail "Structs are not supported"
-eval (CastToType _ _) = fail "Casting is not supported"
-eval (CastToIdentifier _ _) = fail "Casting is not supported"
-eval (SizeofType _) = fail "Sizeof is not supported"
-eval (SizeofExpr _) = fail "Sizeof is not supported"
+        else throwError "Array index out of bounds"
+    _ -> throwError "Array access: type error"
+eval (EnumDeclaration _ _) = throwError "Enums are not supported"
+eval (StructDeclaration _ _) = throwError "Structs are not supported"
+eval (StructInitialization _ _) = throwError "Structs are not supported"
+eval (EnumElement _ _) = throwError "Enums are not supported"
+eval (StructElement _ _) = throwError "Structs are not supported"
+eval (CastToType _ _) = throwError "Casting is not supported"
+eval (CastToIdentifier _ _) = throwError "Casting is not supported"
+eval (SizeofType _) = throwError "Sizeof is not supported"
+eval (SizeofExpr _) = throwError "Sizeof is not supported"
 eval (Reference (Identifier e)) = NumVal <$> getSymbolIndex e
-eval (Reference _) = fail "Reference: type error"
+eval (Reference _) = throwError "Reference: type error"
 eval (Dereference (Identifier e)) = do
   e' <- eval $ Identifier e
   case e' of
     (NumVal i) -> getIndexValue i >>= return . fst
-    _ -> fail "Dereference: type error"
-eval (Dereference _) = fail "Dereference: type error"
-eval (Syscall _) = fail "Syscalls are not supported"
+    _ -> throwError "Dereference: type error"
+eval (Dereference _) = throwError "Dereference: type error"
+eval (Syscall _) = throwError "Syscalls are not supported"
 
 lookupMem :: Symbol -> [Env] -> Maybe (Value, Bool)
 lookupMem _ [] = Nothing
 lookupMem str (env : envs) = lookup str env <|> lookupMem str envs
 
-apply :: Value -> [Value] -> State InterpreterState Value
+apply :: Value -> [Value] -> Interpreter Value
 apply (Closure ids e) xs
-  | length ids /= length xs = fail "Arguments mismatch"
+  | length ids /= length xs = throwError "Arguments mismatch"
   | otherwise = do
       mem <- getEnvs
       setEnvs (linkedParams : mem)
@@ -362,4 +307,4 @@ apply (Closure ids e) xs
       return e'
  where
   linkedParams = [(sym, (val, isMut)) | ((Type _ isMut, sym), val) <- zip ids xs]
-apply _ _ = fail "Expected closure"
+apply _ _ = throwError "Expected closure"
