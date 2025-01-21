@@ -6,6 +6,7 @@ module ASTCompiler (
   CompilerState (..),
   initialCompilerState,
   CompilerError (..),
+  Scope (..),
 ) where
 
 import AST
@@ -14,7 +15,6 @@ import Control.Monad.Except
 import Control.Monad.State
 import qualified Data.Map as Map
 
--- Define specific error types
 data CompilerError
   = NotImplementedError String
   | ScopeError String
@@ -22,7 +22,7 @@ data CompilerError
   | CompilationError String
   deriving (Show, Eq)
 
--- Bytecode instruction set
+-- Enhanced instruction set with stack frame management
 data Instruction
   = PushInt Int
   | PushFloat Float
@@ -31,6 +31,14 @@ data Instruction
   | StoreVar String
   | DefineVar String Bool
   | Pop
+  | -- Stack frame management instructions
+    PushFrame -- Create new stack frame
+  | PopFrame -- Remove current stack frame
+  | StoreLocal String -- Store in current frame
+  | LoadLocal String -- Load from current frame
+  | StoreGlobal String -- Store in global scope
+  | LoadGlobal String -- Load from global scope
+  -- Rest of instructions
   | Add
   | Sub
   | Mul
@@ -54,10 +62,18 @@ data Instruction
   | Print
   deriving (Show, Eq)
 
+-- Enhanced scope tracking
+data Scope = Scope
+  { variables :: Map.Map String (Int, Bool) -- (stack offset, is mutable)
+  , scopeDepth :: Int
+  }
+  deriving (Show)
+
 data CompilerState = CompilerState
   { instructions :: [Instruction]
   , labelCounter :: Int
-  , scopeStack :: [Map.Map String Int]
+  , scopeStack :: [Scope] -- Stack of scopes
+  , currentStackOffset :: Int -- Current stack position
   }
   deriving (Show)
 
@@ -66,13 +82,74 @@ initialCompilerState =
   CompilerState
     { instructions = []
     , labelCounter = 0
-    , scopeStack = [Map.empty]
+    , scopeStack = [Scope Map.empty 0] -- Global scope
+    , currentStackOffset = 0
     }
 
--- New type for our compiler monad stack
 type Compiler a = ExceptT CompilerError (State CompilerState) a
 
--- Main compilation function now returns Either
+-- Helper functions for scope management
+pushScope :: Compiler ()
+pushScope = do
+  state' <- lift get
+  let depth = case scopeStack state' of
+        [] -> 0
+        (s : _) -> scopeDepth s + 1
+  let newScope = Scope Map.empty depth
+  modify $ \s -> s{scopeStack = newScope : scopeStack s}
+  emit PushFrame
+
+popScope :: Compiler ()
+popScope = do
+  state' <- lift get
+  case scopeStack state' of
+    [] -> throwError $ ScopeError "No active scope"
+    [_globalScope] -> throwError $ ScopeError "Cannot pop global scope"
+    _globalScope : rest -> do
+      modify $ \s -> s{scopeStack = rest}
+      emit PopFrame
+
+defineVariable :: String -> Bool -> Compiler ()
+defineVariable name isMutable = do
+  state' <- lift get
+  case scopeStack state' of
+    [] -> throwError $ ScopeError "No active scope"
+    (scope : rest) ->
+      if Map.member name (variables scope)
+        then
+          throwError $
+            ScopeError $
+              "Variable " ++ name ++ " already defined in current scope"
+        else
+          let offset = currentStackOffset state'
+              newScope = scope{variables = Map.insert name (offset, isMutable) (variables scope)}
+           in modify $ \s -> s{scopeStack = newScope : rest, currentStackOffset = offset + 1}
+
+lookupVariable :: String -> Compiler (Bool, Bool) -- (isGlobal, isMutable)
+lookupVariable name = do
+  state' <- lift get
+  case findVariable name (scopeStack state') of
+    Nothing -> throwError $ ScopeError $ "Variable " ++ name ++ " not found"
+    Just (isGlobal, isMutable) -> return (isGlobal, isMutable)
+ where
+  findVariable :: String -> [Scope] -> Maybe (Bool, Bool)
+  findVariable _ [] = Nothing
+  findVariable str (s : ss) =
+    case Map.lookup str (variables s) of
+      Just (_, mut) -> Just (scopeDepth s == 0, mut)
+      Nothing -> findVariable str ss
+
+-- Helper functions
+emit :: Instruction -> Compiler ()
+emit inst = modify $ \s -> s{instructions = instructions s ++ [inst]}
+
+newLabel :: Compiler Int
+newLabel = do
+  current <- gets labelCounter
+  modify $ \s -> s{labelCounter = labelCounter s + 1}
+  return current
+
+-- Main compilation function
 compile :: Node -> Either CompilerError [Instruction]
 compile node =
   let (result, _) = runState (runExceptT compileProgram) initialCompilerState
@@ -82,18 +159,7 @@ compile node =
     compileNode node
     gets instructions
 
--- Helper to emit an instruction
-emit :: Instruction -> Compiler ()
-emit inst = modify $ \s -> s{instructions = instructions s ++ [inst]}
-
--- Helper to generate a new label
-newLabel :: Compiler Int
-newLabel = do
-  current <- gets labelCounter
-  modify $ \s -> s{labelCounter = labelCounter s + 1}
-  return current
-
--- Compilation for each node type with proper error handling
+-- Node compilation with scope awareness
 compileNode :: Node -> Compiler ()
 compileNode = \case
   IntV n -> emit $ PushInt n
@@ -101,21 +167,35 @@ compileNode = \case
   ArrayV nodes -> do
     mapM_ compileNode nodes
     emit $ MakeArray (length nodes)
-  Identifier sym -> emit $ LoadVar sym
+  Identifier sym -> do
+    (isGlobal, _) <- lookupVariable sym
+    emit $
+      if isGlobal
+        then LoadGlobal sym
+        else LoadLocal sym
   VarDef sym typ expr -> do
     compileNode expr
+    defineVariable sym (mutable typ)
     emit $ DefineVar sym (mutable typ)
   VarAssign sym expr -> do
+    (isGlobal, isMutable) <- lookupVariable sym
+    unless isMutable $
+      throwError $
+        ScopeError $
+          "Cannot assign to immutable variable " ++ sym
     compileNode expr
-    emit $ StoreVar sym
+    emit $
+      if isGlobal
+        then StoreGlobal sym
+        else StoreLocal sym
   Block nodes isBlockStart -> do
-    when isBlockStart $ modify $ \s -> s{scopeStack = Map.empty : scopeStack s}
+    when isBlockStart pushScope
     mapM_ compileNode nodes
-    when isBlockStart $ modify $ \s -> s{scopeStack = tail $ scopeStack s}
+    when isBlockStart popScope
   AST.Return expr -> do
     compileNode expr
     emit ASTCompiler.Return
-  If cond thenExpr mElseExpr -> do
+  If cond thenExpr maybeElseExpr -> do
     endLabel <- newLabel
     elseLabel <- newLabel
     compileNode cond
@@ -123,7 +203,7 @@ compileNode = \case
     compileNode thenExpr
     emit $ Jump endLabel
     emit $ JumpIfFalse elseLabel
-    case mElseExpr of
+    case maybeElseExpr of
       Just elseExpr -> compileNode elseExpr
       Nothing -> emit PushNull
     emit $ Jump endLabel
@@ -135,10 +215,6 @@ compileNode = \case
     emit $ JumpIfFalse endLabel
     compileNode body
     emit $ Jump startLabel
-  FunctionCall func args -> do
-    mapM_ compileNode args
-    compileNode func
-    emit $ Call (length args)
   AST.Print expr -> do
     compileNode expr
     emit ASTCompiler.Print
@@ -149,9 +225,7 @@ compileNode = \case
   ModOp e1 e2 -> compileBinaryOp e1 e2 Mod
   AndOp e1 e2 -> compileBinaryOp e1 e2 And
   OrOp e1 e2 -> compileBinaryOp e1 e2 Or
-  NotOp e -> do
-    compileNode e
-    emit Not
+  NotOp e -> compileNode e >> emit Not
   EqOp e1 e2 -> compileBinaryOp e1 e2 Equal
   NeqOp e1 e2 -> compileBinaryOp e1 e2 NotEqual
   GtOp e1 e2 -> compileBinaryOp e1 e2 Greater
@@ -163,6 +237,8 @@ compileNode = \case
     throwError $ NotImplementedError "For loops are not yet implemented"
   FunctionDeclaration{} ->
     throwError $ NotImplementedError "Function declarations are not yet implemented"
+  FunctionCall{} ->
+    throwError $ NotImplementedError "Function calls are not yet implemented"
   StructDeclaration{} ->
     throwError $ NotImplementedError "Struct declarations are not yet implemented"
   EnumDeclaration{} ->
@@ -199,7 +275,4 @@ compileNode = \case
 
 -- Helper for compiling binary operations
 compileBinaryOp :: Node -> Node -> Instruction -> Compiler ()
-compileBinaryOp e1 e2 op = do
-  compileNode e1
-  compileNode e2
-  emit op
+compileBinaryOp e1 e2 op = compileNode e1 >> compileNode e2 >> emit op
