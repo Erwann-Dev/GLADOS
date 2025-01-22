@@ -17,13 +17,8 @@ data Type = Type
   deriving (Show, Eq)
 
 data BasicType
-  = U8
-  | U16
-  | U32
-  | I8
-  | I16
-  | I32
-  | F32
+  = INT
+  | FLOAT
   | Void
   | Pointer Type
   deriving (Show, Eq)

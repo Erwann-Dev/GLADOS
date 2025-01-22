@@ -1,0 +1,11 @@
+mut int a = 0
+a = 23
+int b = 15
+print(a)
+print(b)
+a = a + b
+print(a)
+a -= 10
+print(a)
+print(a + b * 2)
+print((a + b) * 2)

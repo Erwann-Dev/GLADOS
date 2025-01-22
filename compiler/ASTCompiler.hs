@@ -10,6 +10,7 @@ module ASTCompiler (
 ) where
 
 import AST
+import CompilerInstruction as Instr
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
@@ -22,49 +23,9 @@ data CompilerError
   | CompilationError String
   deriving (Show, Eq)
 
--- Enhanced instruction set with stack frame management
-data Instruction
-  = PushInt Int
-  | PushFloat Float
-  | PushNull
-  | LoadVar String
-  | StoreVar String
-  | DefineVar String Bool
-  | Pop
-  | -- Stack frame management instructions
-    PushFrame -- Create new stack frame
-  | PopFrame -- Remove current stack frame
-  | StoreLocal String -- Store in current frame
-  | LoadLocal String -- Load from current frame
-  | StoreGlobal String -- Store in global scope
-  | LoadGlobal String -- Load from global scope
-  -- Rest of instructions
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | Mod
-  | Not
-  | And
-  | Or
-  | Equal
-  | NotEqual
-  | Greater
-  | Less
-  | GreaterEqual
-  | LessEqual
-  | JumpIfFalse Int
-  | Jump Int
-  | Call Int
-  | Return
-  | MakeArray Int
-  | LoadArray
-  | Print
-  deriving (Show, Eq)
-
 -- Enhanced scope tracking
 data Scope = Scope
-  { variables :: Map.Map String (Int, Bool) -- (stack offset, is mutable)
+  { variables :: Map.Map String (Int, Bool, BasicType) -- (stack offset, is mutable, type)
   , scopeDepth :: Int
   }
   deriving (Show)
@@ -88,6 +49,30 @@ initialCompilerState =
 
 type Compiler a = ExceptT CompilerError (State CompilerState) a
 
+checkTypes :: BasicType -> BasicType -> Compiler ()
+checkTypes INT INT = return ()
+checkTypes FLOAT FLOAT = return ()
+checkTypes t1 t2 = throwError $ TypeError $ "Type mismatch: expected " ++ show t1 ++ " but got " ++ show t2
+
+checkMutability :: String -> Bool -> Compiler ()
+checkMutability sym isMutable =
+  unless isMutable $
+    throwError $
+      ScopeError $
+        "Cannot assign to immutable variable " ++ sym
+
+checkIntegerAssignment :: BasicType -> Compiler ()
+checkIntegerAssignment varType =
+  unless (isIntegerType varType) $
+    throwError $
+      TypeError "Type mismatch: expected float but got integer"
+
+checkFloatAssignment :: BasicType -> Compiler ()
+checkFloatAssignment varType =
+  when (isIntegerType varType) $
+    throwError $
+      TypeError "Type mismatch: expected integer but got float"
+
 -- Helper functions for scope management
 pushScope :: Compiler ()
 pushScope = do
@@ -109,35 +94,88 @@ popScope = do
       modify $ \s -> s{scopeStack = rest}
       emit PopFrame
 
-defineVariable :: String -> Bool -> Compiler ()
-defineVariable name isMutable = do
-  state' <- lift get
+-- Modified define variable to use BasicType
+defineVariable :: String -> Type -> Compiler ()
+defineVariable name (Type basicType isMutable) = do
+  state' <- get
   case scopeStack state' of
     [] -> throwError $ ScopeError "No active scope"
-    (scope : rest) ->
-      if Map.member name (variables scope)
-        then
-          throwError $
-            ScopeError $
-              "Variable " ++ name ++ " already defined in current scope"
-        else
-          let offset = currentStackOffset state'
-              newScope = scope{variables = Map.insert name (offset, isMutable) (variables scope)}
-           in modify $ \s -> s{scopeStack = newScope : rest, currentStackOffset = offset + 1}
+    (scope : rest) -> do
+      when (Map.member name (variables scope)) $
+        throwError $
+          ScopeError $
+            "Variable " ++ name ++ " already defined in current scope"
+      let offset = currentStackOffset state'
+      let newScope = scope{variables = Map.insert name (offset, isMutable, basicType) (variables scope)}
+      modify $ \s ->
+        s
+          { scopeStack = newScope : rest
+          , currentStackOffset = offset + 1
+          }
 
-lookupVariable :: String -> Compiler (Bool, Bool) -- (isGlobal, isMutable)
+-- Modified lookup to work with BasicType
+lookupVariable :: String -> Compiler (Bool, Bool, BasicType) -- (isGlobal, isMutable, basic_type)
 lookupVariable name = do
-  state' <- lift get
+  state' <- get
   case findVariable name (scopeStack state') of
     Nothing -> throwError $ ScopeError $ "Variable " ++ name ++ " not found"
-    Just (isGlobal, isMutable) -> return (isGlobal, isMutable)
+    Just (isGlobal, isMutable, basicType) -> return (isGlobal, isMutable, basicType)
  where
-  findVariable :: String -> [Scope] -> Maybe (Bool, Bool)
+  findVariable :: String -> [Scope] -> Maybe (Bool, Bool, BasicType)
   findVariable _ [] = Nothing
-  findVariable str (s : ss) =
-    case Map.lookup str (variables s) of
-      Just (_, mut) -> Just (scopeDepth s == 0, mut)
-      Nothing -> findVariable str ss
+  findVariable n (s : ss) =
+    case Map.lookup n (variables s) of
+      Just (_, mut, typ) -> Just (scopeDepth s == 0, mut, typ)
+      Nothing -> findVariable n ss
+
+-- Helper to get type of a node
+getNodeType :: Node -> Compiler BasicType
+getNodeType (IntV _) = return INT
+getNodeType (FloatV _) = return FLOAT
+getNodeType (ArrayV nodes) = do
+  if null nodes
+    then throwError $ TypeError "Cannot determine type of empty array"
+    else do
+      elementType <- getNodeType (head nodes)
+      mapM_
+        ( \n -> do
+            t <- getNodeType n
+            checkTypes elementType t
+        )
+        (tail nodes)
+      return elementType
+getNodeType (Identifier name) = do
+  (_, _, typ) <- lookupVariable name
+  return typ
+getNodeType (AddOp e1 e2) = getCommonNumericType e1 e2
+getNodeType (SubOp e1 e2) = getCommonNumericType e1 e2
+getNodeType (MulOp e1 e2) = getCommonNumericType e1 e2
+getNodeType (DivOp e1 e2) = getCommonNumericType e1 e2
+getNodeType (ModOp e1 e2) = do
+  t1 <- getNodeType e1
+  t2 <- getNodeType e2
+  if isIntegerType t1 && isIntegerType t2
+    then return t1
+    else throwError $ TypeError "Modulo operation requires integer types"
+getNodeType (NotOp _) = return INT
+getNodeType (EqOp _ _) = return INT
+getNodeType (NeqOp _ _) = return INT
+getNodeType (GtOp _ _) = return INT
+getNodeType (LtOp _ _) = return INT
+getNodeType (GeqOp _ _) = return INT
+getNodeType (LeqOp _ _) = return INT
+getNodeType _ = throwError $ TypeError "Cannot determine type of expression"
+
+-- Helper for numeric operations
+getCommonNumericType :: Node -> Node -> Compiler BasicType
+getCommonNumericType e1 e2 = do
+  t1 <- getNodeType e1
+  t2 <- getNodeType e2
+  checkTypes t1 t2
+  return t1
+
+isIntegerType :: BasicType -> Bool
+isIntegerType t = t == INT
 
 -- Helper functions
 emit :: Instruction -> Compiler ()
@@ -168,33 +206,50 @@ compileNode = \case
     mapM_ compileNode nodes
     emit $ MakeArray (length nodes)
   Identifier sym -> do
-    (isGlobal, _) <- lookupVariable sym
-    emit $
-      if isGlobal
-        then LoadGlobal sym
-        else LoadLocal sym
-  VarDef sym typ expr -> do
-    compileNode expr
-    defineVariable sym (mutable typ)
+    (isGlobal, _, _) <- lookupVariable sym
+    emit $ if isGlobal then LoadGlobal sym else LoadLocal sym
+  VarDef sym typ (IntV n) -> do
+    checkIntegerAssignment $ basic_type typ
+    compileNode (IntV n)
+    defineVariable sym typ
     emit $ DefineVar sym (mutable typ)
-  VarAssign sym expr -> do
-    (isGlobal, isMutable) <- lookupVariable sym
-    unless isMutable $
-      throwError $
-        ScopeError $
-          "Cannot assign to immutable variable " ++ sym
+  VarDef sym typ (FloatV n) -> do
+    checkFloatAssignment $ basic_type typ
+    compileNode (FloatV n)
+    defineVariable sym typ
+    emit $ DefineVar sym (mutable typ)
+  VarDef sym typ expr -> do
+    exprType <- getNodeType expr
+    checkTypes (basic_type typ) exprType
     compileNode expr
-    emit $
-      if isGlobal
-        then StoreGlobal sym
-        else StoreLocal sym
+    defineVariable sym typ
+    emit $ DefineVar sym (mutable typ)
+  VarAssign sym (IntV n) -> do
+    (isGlobal, isMutable, varType) <- lookupVariable sym
+    checkMutability sym isMutable
+    checkIntegerAssignment varType
+    compileNode (IntV n)
+    emit $ if isGlobal then StoreGlobal sym else StoreLocal sym
+  VarAssign sym (FloatV n) -> do
+    (isGlobal, isMutable, varType) <- lookupVariable sym
+    checkMutability sym isMutable
+    checkFloatAssignment varType
+    compileNode (FloatV n)
+    emit $ if isGlobal then StoreGlobal sym else StoreLocal sym
+  VarAssign sym expr -> do
+    (isGlobal, isMutable, varType) <- lookupVariable sym
+    checkMutability sym isMutable
+    exprType <- getNodeType expr
+    checkTypes varType exprType
+    compileNode expr
+    emit $ if isGlobal then StoreGlobal sym else StoreLocal sym
   Block nodes isBlockStart -> do
     when isBlockStart pushScope
     mapM_ compileNode nodes
     when isBlockStart popScope
   AST.Return expr -> do
     compileNode expr
-    emit ASTCompiler.Return
+    emit Instr.Return
   If cond thenExpr maybeElseExpr -> do
     endLabel <- newLabel
     elseLabel <- newLabel
@@ -217,13 +272,17 @@ compileNode = \case
     emit $ Jump startLabel
   AST.Print expr -> do
     compileNode expr
-    emit ASTCompiler.Print
+    emit Instr.Print
   AddOp e1 e2 -> compileBinaryOp e1 e2 Add
   SubOp e1 e2 -> compileBinaryOp e1 e2 Sub
   MulOp e1 e2 -> compileBinaryOp e1 e2 Mul
   DivOp e1 e2 -> compileBinaryOp e1 e2 Div
   ModOp e1 e2 -> compileBinaryOp e1 e2 Mod
   AndOp e1 e2 -> compileBinaryOp e1 e2 And
+  AddEqOp sym e2 -> compileNode (VarAssign sym (AddOp (Identifier sym) e2))
+  SubEqOp sym e2 -> compileNode (VarAssign sym (SubOp (Identifier sym) e2))
+  MulEqOp sym e2 -> compileNode (VarAssign sym (MulOp (Identifier sym) e2))
+  DivEqOp sym e2 -> compileNode (VarAssign sym (DivOp (Identifier sym) e2))
   OrOp e1 e2 -> compileBinaryOp e1 e2 Or
   NotOp e -> compileNode e >> emit Not
   EqOp e1 e2 -> compileBinaryOp e1 e2 Equal
@@ -232,6 +291,7 @@ compileNode = \case
   LtOp e1 e2 -> compileBinaryOp e1 e2 Less
   GeqOp e1 e2 -> compileBinaryOp e1 e2 GreaterEqual
   LeqOp e1 e2 -> compileBinaryOp e1 e2 LessEqual
+  ConditionalBody nodes -> mapM_ compileNode nodes
   -- Unimplemented features with proper error messages
   For{} ->
     throwError $ NotImplementedError "For loops are not yet implemented"
@@ -263,16 +323,14 @@ compileNode = \case
     throwError $ NotImplementedError "Dereference operator is not yet implemented"
   Syscall{} ->
     throwError $ NotImplementedError "Syscalls are not yet implemented"
-  AddEqOp{} ->
-    throwError $ NotImplementedError "Compound assignment operators are not yet implemented"
-  SubEqOp{} ->
-    throwError $ NotImplementedError "Compound assignment operators are not yet implemented"
-  MulEqOp{} ->
-    throwError $ NotImplementedError "Compound assignment operators are not yet implemented"
-  DivEqOp{} ->
-    throwError $ NotImplementedError "Compound assignment operators are not yet implemented"
   _ -> throwError $ CompilationError "Unknown node type"
 
 -- Helper for compiling binary operations
 compileBinaryOp :: Node -> Node -> Instruction -> Compiler ()
-compileBinaryOp e1 e2 op = compileNode e1 >> compileNode e2 >> emit op
+compileBinaryOp e1 e2 op = do
+  t1 <- getNodeType e1
+  t2 <- getNodeType e2
+  checkTypes t1 t2
+  compileNode e1
+  compileNode e2
+  emit op

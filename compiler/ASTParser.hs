@@ -84,13 +84,8 @@ typeP = ptrTypeP <|> typeP'
 
 basicTypeP :: Parser BasicType
 basicTypeP =
-  (U8 <$ stringP "u8")
-    <|> (U16 <$ stringP "u16")
-    <|> (U32 <$ stringP "u32")
-    <|> (I8 <$ stringP "i8")
-    <|> (I16 <$ stringP "i16")
-    <|> (I32 <$ stringP "i32")
-    <|> (F32 <$ stringP "f32")
+  (INT <$ stringP "int")
+    <|> (FLOAT <$ stringP "float")
     <|> (Void <$ stringP "void")
 
 typeP' :: Parser Type
@@ -121,8 +116,7 @@ floatValueP = do
   digits <- spanP isDigit
   decimal <- ws *> charP '.' *> ws *> notNull (spanP isDigit)
   absVal <- case (digits, decimal) of
-    ("", "") -> empty
-    (dig, "") -> empty
+    (_, "") -> empty
     ("", dec) -> pure $ read dec / (10 ^ length dec)
     (dig, dec) -> pure $ read dig + read dec / (10 ^ length dec)
   return $ FloatV $ maybeNegate absVal

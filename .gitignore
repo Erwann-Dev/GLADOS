@@ -3,5 +3,7 @@
 glados.cabal
 stack.yaml.lock
 glados
+glados-compiler
+glados-vm
 test/coverage/
 docs/
