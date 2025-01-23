@@ -1,4 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use <&>" #-}
 
 module ASTCompiler (
   Instruction (..),
@@ -25,7 +28,7 @@ data CompilerError
 
 -- Enhanced scope tracking
 data Scope = Scope
-  { variables :: Map.Map String (Int, Bool, BasicType) -- (stack offset, is mutable, type)
+  { variables :: Map.Map String (Int, Type) -- (stack offset, is mutable, type)
   , scopeDepth :: Int
   }
   deriving (Show)
@@ -43,7 +46,7 @@ initialCompilerState =
   CompilerState
     { instructions = []
     , labelCounter = 0
-    , scopeStack = [Scope Map.empty 0] -- Global scope
+    , scopeStack = [] -- Global scope
     , currentStackOffset = 0
     }
 
@@ -61,14 +64,14 @@ checkMutability sym isMutable =
       ScopeError $
         "Cannot assign to immutable variable " ++ sym
 
-checkIntegerAssignment :: BasicType -> Compiler ()
-checkIntegerAssignment varType =
+checkIfFloat :: BasicType -> Compiler ()
+checkIfFloat varType =
   unless (isIntegerType varType) $
     throwError $
       TypeError "Type mismatch: expected float but got integer"
 
-checkFloatAssignment :: BasicType -> Compiler ()
-checkFloatAssignment varType =
+checkIfInteger :: BasicType -> Compiler ()
+checkIfInteger varType =
   when (isIntegerType varType) $
     throwError $
       TypeError "Type mismatch: expected integer but got float"
@@ -96,7 +99,7 @@ popScope = do
 
 -- Modified define variable to use BasicType
 defineVariable :: String -> Type -> Compiler ()
-defineVariable name (Type basicType isMutable) = do
+defineVariable name typ = do
   state' <- get
   case scopeStack state' of
     [] -> throwError $ ScopeError "No active scope"
@@ -106,7 +109,7 @@ defineVariable name (Type basicType isMutable) = do
           ScopeError $
             "Variable " ++ name ++ " already defined in current scope"
       let offset = currentStackOffset state'
-      let newScope = scope{variables = Map.insert name (offset, isMutable, basicType) (variables scope)}
+      let newScope = scope{variables = Map.insert name (offset, typ) (variables scope)}
       modify $ \s ->
         s
           { scopeStack = newScope : rest
@@ -114,49 +117,39 @@ defineVariable name (Type basicType isMutable) = do
           }
 
 -- Modified lookup to work with BasicType
-lookupVariable :: String -> Compiler (Bool, Bool, BasicType) -- (isGlobal, isMutable, basic_type)
+lookupVariable :: String -> Compiler (Bool, Type) -- (isGlobal, isMutable, basic_type)
 lookupVariable name = do
   state' <- get
   case findVariable name (scopeStack state') of
     Nothing -> throwError $ ScopeError $ "Variable " ++ name ++ " not found"
-    Just (isGlobal, isMutable, basicType) -> return (isGlobal, isMutable, basicType)
+    Just (isGlobal, typ) -> return (isGlobal, typ)
  where
-  findVariable :: String -> [Scope] -> Maybe (Bool, Bool, BasicType)
+  findVariable :: String -> [Scope] -> Maybe (Bool, Type)
   findVariable _ [] = Nothing
   findVariable n (s : ss) =
     case Map.lookup n (variables s) of
-      Just (_, mut, typ) -> Just (scopeDepth s == 0, mut, typ)
+      Just (_, typ) -> Just (scopeDepth s == 0, typ)
       Nothing -> findVariable n ss
 
 -- Helper to get type of a node
 getNodeType :: Node -> Compiler BasicType
 getNodeType (IntV _) = return INT
 getNodeType (FloatV _) = return FLOAT
-getNodeType (ArrayV nodes) = do
+getNodeType (ArrayV nodes) =
   if null nodes
-    then throwError $ TypeError "Cannot determine type of empty array"
-    else do
-      elementType <- getNodeType (head nodes)
-      mapM_
-        ( \n -> do
-            t <- getNodeType n
-            checkTypes elementType t
-        )
-        (tail nodes)
-      return elementType
-getNodeType (Identifier name) = do
-  (_, _, typ) <- lookupVariable name
-  return typ
+    then return Void
+    else getNodeType (head nodes) >>= \typ -> checkArrType typ >> return typ
+ where
+  checkArrType typ = mapM_ (f typ) nodes
+  f typ node = do
+    t <- getNodeType node
+    when (t /= typ) $ throwError $ TypeError "Array elements must have the same type"
+getNodeType (Identifier name) = lookupVariable name >>= \(_, Type typ _) -> return typ
 getNodeType (AddOp e1 e2) = getCommonNumericType e1 e2
 getNodeType (SubOp e1 e2) = getCommonNumericType e1 e2
 getNodeType (MulOp e1 e2) = getCommonNumericType e1 e2
 getNodeType (DivOp e1 e2) = getCommonNumericType e1 e2
-getNodeType (ModOp e1 e2) = do
-  t1 <- getNodeType e1
-  t2 <- getNodeType e2
-  if isIntegerType t1 && isIntegerType t2
-    then return t1
-    else throwError $ TypeError "Modulo operation requires integer types"
+getNodeType (ModOp _ _) = return INT
 getNodeType (NotOp _) = return INT
 getNodeType (EqOp _ _) = return INT
 getNodeType (NeqOp _ _) = return INT
@@ -206,15 +199,15 @@ compileNode = \case
     mapM_ compileNode nodes
     emit $ MakeArray (length nodes)
   Identifier sym -> do
-    (isGlobal, _, _) <- lookupVariable sym
+    (isGlobal, _) <- lookupVariable sym
     emit $ if isGlobal then LoadGlobal sym else LoadLocal sym
   VarDef sym typ (IntV n) -> do
-    checkIntegerAssignment $ basic_type typ
+    checkIfFloat $ basic_type typ
     compileNode (IntV n)
     defineVariable sym typ
     emit $ DefineVar sym (mutable typ)
   VarDef sym typ (FloatV n) -> do
-    checkFloatAssignment $ basic_type typ
+    checkIfInteger $ basic_type typ
     compileNode (FloatV n)
     defineVariable sym typ
     emit $ DefineVar sym (mutable typ)
@@ -225,19 +218,19 @@ compileNode = \case
     defineVariable sym typ
     emit $ DefineVar sym (mutable typ)
   VarAssign sym (IntV n) -> do
-    (isGlobal, isMutable, varType) <- lookupVariable sym
+    (isGlobal, Type varType isMutable) <- lookupVariable sym
     checkMutability sym isMutable
-    checkIntegerAssignment varType
+    checkIfFloat varType
     compileNode (IntV n)
     emit $ if isGlobal then StoreGlobal sym else StoreLocal sym
   VarAssign sym (FloatV n) -> do
-    (isGlobal, isMutable, varType) <- lookupVariable sym
+    (isGlobal, Type varType isMutable) <- lookupVariable sym
     checkMutability sym isMutable
-    checkFloatAssignment varType
+    checkIfInteger varType
     compileNode (FloatV n)
     emit $ if isGlobal then StoreGlobal sym else StoreLocal sym
   VarAssign sym expr -> do
-    (isGlobal, isMutable, varType) <- lookupVariable sym
+    (isGlobal, Type varType isMutable) <- lookupVariable sym
     checkMutability sym isMutable
     exprType <- getNodeType expr
     checkTypes varType exprType
