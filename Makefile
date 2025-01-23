@@ -5,7 +5,7 @@
 ## Makefile
 ##
 
-NAME	=	glados
+NAME	=	glados-compiler glados-vm
 
 STACK	=	stack
 
